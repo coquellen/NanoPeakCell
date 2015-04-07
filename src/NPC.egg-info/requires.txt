@@ -1,0 +1,9 @@
+pyFAI
+fabio
+PIL
+h5py >=2.4.0
+mpi4py
+matplotlib
+wxpython
+scipy >=0.15.0
+numpy >=1.7.0
