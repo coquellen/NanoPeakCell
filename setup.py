@@ -21,7 +21,7 @@ setup(
 	#packages      =   packages,
 	packages      =   find_packages(),
         #package_dir   =   package_dir,
-        package_data={'': ['bitmaps/*']},
+        package_data={'': ['bitmaps/*','gui/cmap.lst']},
 	#install_requires = [
         #                'pyFAI',
         #                'fabio',
