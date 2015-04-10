@@ -9,6 +9,7 @@ import pyFAI.detectors
 import numpy as np
 import h5py
 import fabio
+import random
 
 from NPC.Azimuthal_Integrator import AI
 from NPC.HitFinder import HitFinder
@@ -113,6 +114,7 @@ class DataProcessing_MPI(DataProcessing):
             self.get_filenames()
             if 'eiger' in self.options['detector'].lower(): self.run_eiger()
             else:
+
                 self.total = len(self.filenames)
                 for idx in xrange(self.rank,self.total,self.size):
                     fname = self.filenames[idx]
@@ -277,8 +279,6 @@ class DataProcessing_multiprocessing(DataProcessing):
         self.avg = np.zeros_like(self.max_proj)
         self.cleanmax = np.zeros_like(self.max_proj)
 
-        print '\n= Job progression = Hit rate =    Max   =   Min   = Median = #Peaks '
-
         self.load_queue_mapping[self.experiment]()
         while self.out != self.total:
             self.get_results()
@@ -294,6 +294,9 @@ class DataProcessing_multiprocessing(DataProcessing):
             tags = h5['%s/event_info/tag_number_list'%run][:]
             h5.close()
             tasks += [(filename,run,tag) for tag in tags]
+
+        tasks = utils.randomize(tasks,self.options['randomizer'])
+        print '\n= Job progression = Hit rate =    Max   =   Min   = Median = #Peaks '
         self.total = len(tasks)
         self.chunk = max(int(round(float(self.total) / 1000.)), 10)
 
@@ -310,6 +313,9 @@ class DataProcessing_multiprocessing(DataProcessing):
     def load_ssx_queue(self):
         if 'eiger' in self.options['detector'].lower(): self.load_eiger_queue()
         else:
+            print len(self.filenames)
+            self.filenames = utils.randomize(self.filenames,self.options['randomizer'])
+            print '\n= Job progression = Hit rate =    Max   =   Min   = Median = #Peaks '
             self.total = len(self.filenames)
             self.chunk = max(int(round(float(self.total) / 1000.)), 10)
 
@@ -333,6 +339,9 @@ class DataProcessing_multiprocessing(DataProcessing):
                     self.total += num_frames
                     tasks += [(filename,key,i) for i in xrange(num_frames)]
             h5.close()
+
+        tasks = utils.randomize(tasks,self.options['randomizer'])
+        print '\n= Job progression = Hit rate =    Max   =   Min   = Median = #Peaks '
         self.total = len(tasks)
         self.chunk = max(int(round(float(self.total) / 1000.)), 10)
 
@@ -394,10 +403,11 @@ if __name__ == '__main__':
                     'output_directory': '.',
                     'num': '1',
                     'output_formats': 'hdf5',
-                    'data': '/Users/nico/Eiger/temp_data',
-                    'filename_root': 'series_000_master',
+                    'data': '/Users/nico/IBS2013/EIGER',
+                    'filename_root': 'series_100_master',
                     'file_extension': '.h5',
-                    'randomizer': False,
+                    'randomizer': 100,
+                    'mask': 'none',
                     'cpus': 1,
                     'threshold': 10,
                     'npixels': 30,
@@ -417,14 +427,15 @@ if __name__ == '__main__':
                'data': '/Users/nico/IBS2013/Projects/SERIALX/IRISFP',
                'root': 'shot',
                'file_extension': '.h5',
-               'randomizer': False,
+               'randomizer': 10,
                'runs': '1-2',
                'cpus': 1,
                'threshold': 1000,
                'npixels': 100,
                'background_subtraction': 'None',
                'bragg_search': False,
-               'mask': '/Users/nico/Sacla_mask_ones.h5'
+               'mask': 'none',
+               'dark': 'none'
                }
 
     options_SSX = {

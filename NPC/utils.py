@@ -133,12 +133,20 @@ def get_filenames(options):
                     if filename.endswith(file_extension) and filename.startswith(filename_root):
                         f.append(os.path.join(root, filename))
         tot = len(f)
+        print tot
         if tot == 0:
             print 'Sorry, no file to be processed'
             sys.exit(1)
 
-        if randomizer not in [ 0, 'None', 'False']:
+        #
 
+
+def randomize(f,randomizer):
+        try: tot = len(f)
+        except TypeError:
+            print 'Sorry, no file to be processed'
+            sys.exit(1)
+        if randomizer not in [ 0, 'None', 'False']:
             f = random.sample(f, randomizer)
             print '%i files have been found and %i will be processed' % (tot, len(f))
         else:

@@ -28,8 +28,8 @@ class HitFinder(object):
         if options['mask'].lower() != 'none':
             self.detector.mask = self.open(options['mask'])
         self.ai = AI
-        if options['mask'].lower() != 'none':
-            self.dark = self.open(options['mask'])
+        if options['dark'].lower() != 'none':
+            self.dark = self.open(options['dark'])
         else: self.dark = np.zeros(self.detector.shape, dtype='uint16')
         self.peaks = []
         self.hit = 0
@@ -44,7 +44,10 @@ class HitFinder(object):
     def open(self,filename):
         #try:
             if filename.endswith('h5'):
-                return h5py.File(filename)['data'][:]
+                h5 = h5py.File(filename)
+                data = h5['data'][:]
+                h5.close()
+                return data
             else:
                 return fabio.open(filename).data
         #except:
@@ -69,7 +72,7 @@ class HitFinder(object):
             filename, group, index = fname
             fileout = filename.split('_master')[0]
             fileout = os.path.basename(fileout)
-            self.root = "%s_%s_%s"%(fileout, group, index.zfill(6))
+            self.root = "%s_%s_%s"%(fileout, group, str(index).zfill(6))
 
         else:
             self.root = os.path.basename(fname)

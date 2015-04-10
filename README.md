@@ -26,8 +26,8 @@ cctbx.xfel (to save in the appropriate pickle format)
 
 Gui dependencies:
 -----------------
-matplotlib
-wxpython
+*matplotlib
+*wxpython
 
 
 Extra dependencies:
@@ -43,13 +43,12 @@ Installation on MacOSX
 I would recommend to use MacPorts. Please follow these instructions to install MacPorts: https://www.macports.org/install.php
 And then run this command:
 ::
-sudo port install python27 py27-numpy py27-scipy py27-h5py py27-pil py27-wxpython-3.0 py27-matplotlib
+sudo port install py27-npc
 
-If you want to be able to access mpi parallelization of NPC, add this port to the previous command line:
-py27-mpi4py (this port will install an mpi library for you)
-Note: MacPort will install hdf5 for you, when installing h5py (so will mpi4py
+If you want to be able to access mpi parallelization of NPC, a variant exists:
+::
+sudo port install py27-npc +mpi
 
-You can also try to install all these packages with pip (but hdf5 and eventually an mpi library should be manually installed)
 
 
 Extra Notes:

@@ -1,7 +1,20 @@
 try:
-    from wx.lib.pubsub import pub
-except:
-    from pubsub import pub
+    if version[0] == '3' or (version[0] == '2' and int(version[1]) >= 9):
+        from wx.lib.pubsub import pub
+        PUBSUB = True
+    elif version[0] == '2' and version[1] == '8' and int(version[2]) >= 11:
+        from wx.lib.pubsub import setupkwargs
+        from wx.lib.pubsub import pub
+        PUBSUB = True
+except ImportError:
+    try:
+        from pubsub import pub
+        PUBSUB = True
+    except ImportError:
+        print """Pubsub not imported and therefore disabled.
+                 NPC uses the pubsub v3 API. It seems that your version of wxpython is outdated (<2.8.11)
+                 Please install a newer version of wxpython and restart NPC
+                 If this does not solve the problem, please contact us, with your latest configuration"""
 
 import os, glob, sys, imp, string
 
