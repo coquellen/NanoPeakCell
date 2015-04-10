@@ -1,3 +1,8 @@
+PUBSUB = False
+# Try to genuinely import pubsub #
+import wx
+version = wx.__version__.split('.')
+
 try:
     if version[0] == '3' or (version[0] == '2' and int(version[1]) >= 9):
         from wx.lib.pubsub import pub
