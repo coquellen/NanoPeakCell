@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 try:
     if version[0] == '3' or (version[0] == '2' and int(version[1]) >= 9):
         from wx.lib.pubsub import pub
