@@ -12,23 +12,23 @@ def readheader(header,filename):
        return distance, psx, psy, wl, bx, by
     
     if fileExtension == '.cbf':
-       header=header['_array_data.header_contents'].split('\n')
-       for setting in header:
+        header=header['_array_data.header_contents'].split('\n')
+        for setting in header:
             if 'Pixel_size' in setting:
             #Conversion from meter to um
                 psx=str(np.float(setting.split()[2])*1000000)
                 psy=str(np.float(setting.split()[5])*1000000)
          
-    if 'Detector_distance' in setting:
-        #Conversion from meter to um
-	    distance=str(float(setting.split()[2])*1000)
+            if 'Detector_distance' in setting:
+                #Conversion from meter to um
+	            distance=str(float(setting.split()[2])*1000)
          
-    if 'Beam_xy' in setting:
-        bx,by=setting[setting.find("(")+1:setting.find(")")].split(',')
-        bx=bx.strip()
-        by=by.strip()
+            if 'Beam_xy' in setting:
+                bx,by=setting[setting.find("(")+1:setting.find(")")].split(',')
+                bx=bx.strip()
+                by=by.strip()
 	    
-    if 'Wavelength' in setting:
-        wl=setting.split()[2]
+            if 'Wavelength' in setting:
+                wl=setting.split()[2]
         return distance, psx, psy, wl, bx, by
        
