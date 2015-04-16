@@ -24,7 +24,7 @@ except ImportError:
 import os, glob, sys, imp, string
 
 ### Check these imports
-import wx, numpy as np
+import numpy as np
 import wx.lib.buttons as buttons
 from NPC.gui import Headers
 

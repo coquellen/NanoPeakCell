@@ -137,7 +137,7 @@ def get_filenames(options):
         if tot == 0:
             print 'Sorry, no file to be processed'
             sys.exit(1)
-
+        else: return f
         #
 
 
