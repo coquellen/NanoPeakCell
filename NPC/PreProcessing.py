@@ -313,7 +313,7 @@ class DataProcessing_multiprocessing(DataProcessing):
     def load_ssx_queue(self):
         if 'eiger' in self.options['detector'].lower(): self.load_eiger_queue()
         else:
-            print len(self.filenames)
+
             self.filenames = utils.randomize(self.filenames,self.options['randomizer'])
             print '\n= Job progression = Hit rate =    Max   =   Min   = Median = #Peaks '
             self.total = len(self.filenames)

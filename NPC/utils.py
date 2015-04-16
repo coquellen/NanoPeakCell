@@ -121,7 +121,6 @@ def get_filenames(options):
         filename_root = options['filename_root']
         file_extension = options['file_extension']
         data_folder = options['data']
-        randomizer = options['randomizer']
 
         f = []
         print 'Looking for files that match your parameters... Please wait'
@@ -133,7 +132,6 @@ def get_filenames(options):
                     if filename.endswith(file_extension) and filename.startswith(filename_root):
                         f.append(os.path.join(root, filename))
         tot = len(f)
-        print tot
         if tot == 0:
             print 'Sorry, no file to be processed'
             sys.exit(1)
