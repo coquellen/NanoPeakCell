@@ -22,3 +22,25 @@ class CSPAD(Detector):
         self.pixel2 = 5e-5
         self.mask = np.zeros(self.shape)
         self.spline = None
+
+
+class Eiger_4M_fake(Detector):
+    def __init__(self):
+        Detector.__init__(self)
+        self.resolution=(2167,2070)
+        self.shape = self.resolution
+        self.pixel1 = 7.5e-5
+        self.pixel2 = 7.5e-5
+        self.mask = np.zeros(self.shape)
+        self.spline = None
+
+class Frelon(Detector):
+    def __init__(self):
+        Detector.__init__(self)
+        self.resolution=(1024,1024)
+        self.shape = self.resolution
+        self.pixel1 = 102e-6
+        self.pixel2 = 102e-6
+        self.mask = np.zeros(self.shape)
+        self.spline = None
+

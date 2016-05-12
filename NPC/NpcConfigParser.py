@@ -5,6 +5,7 @@ import sys
 
 
 def parseBoolString(s):
+    print 'Called'
     return s.strip().lower in ('true', 't', 'yes', '1')
 
 CrystFEL = {'beam_divergence': (float, 1),
@@ -112,7 +113,6 @@ class NpcGenericParser(ConfigParser.RawConfigParser):
         """
         experiment_option = self.get('General', 'experiment')
         experiment = ' '.join(get_param(experiment_option))
-        print experiment
         try:
             self.mapping['Input-Output'] = globals()['IO_{}'.format(experiment)]
         except KeyError:
@@ -130,6 +130,7 @@ class NpcGenericParser(ConfigParser.RawConfigParser):
         for option in options:
             try:
                 built_in, default = dic[option]
+                print built_in, default
                 try:
                     dic[option] = built_in(self.get(section, option))
                 except ValueError:
@@ -180,7 +181,7 @@ if __name__ == '__main__':
         options.update(npc_parser.mapping[key])
 
     options['num'] = get_result_folder_number(options)
-
+    print options
     if options['parallelism'] == 'MPI':
         from NPC.PreProcessing import DataProcessing_MPI as DataProc
     else:

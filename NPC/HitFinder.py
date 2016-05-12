@@ -3,7 +3,7 @@ import fabio
 import h5py
 import numpy as np
 from scipy import ndimage
-from scipy.spatial import cKDTree
+from scipy.spatial import KDTree as cKDTree
 
 try:
     from wx.lib.pubsub import pub
@@ -54,10 +54,10 @@ class HitFinder(object):
     def get_hit(self,name):
         self.apply_mask()
         self.remove_beam_center()
+        self.bkg_sub()
         if self.is_hit():
             self.set_output_filename_mapping[self.options['experiment']](name)
             self.hit = 1
-            self.bkg_sub()
             if self.options['bragg_search']:
                 self.peaks = self.find_peaks()
             self.save_hit()
@@ -66,13 +66,15 @@ class HitFinder(object):
 
     def apply_mask(self):
         self.data[:] = self.data * np.logical_not(self.detector.mask) - self.dark
-
+        #temporary work around for complete dead modules
+        #ID13_Eiger 
+        self.data [ self.data == 65535 ] = 0
     def set_ssx(self, fname):
-        if 'eiger' in self.options['detector'].lower():
+        if 'eiger' in self.options['detector'].lower() and 'h5' in self.options['file_extension']:
             filename, group, index = fname
-            fileout = filename.split('_master')[0]
+            fileout = filename.split('.h5')[0]
             fileout = os.path.basename(fileout)
-            self.root = "%s_%s_%s"%(fileout, group, str(index).zfill(6))
+            self.root = "%s_%s"%(fileout, str(index).zfill(6))
 
         else:
             self.root = os.path.basename(fname)
@@ -90,7 +92,7 @@ class HitFinder(object):
         if self.options['background_subtraction'] !=  'None':
             if self.data.shape == self.detector.shape:
             #BkgCorr with pyFAI Azimuthal Integrator
-                self.data[:] = self.ai.ai.separate(self.data, npt_rad=1024, npt_azim=512, unit="2th_deg", percentile=95, mask=self.detector.mask,
+                self.data = self.ai.ai.separate(self.data.astype("float64"), npt_rad=1024, npt_azim=512, unit="2th_deg", percentile=50, mask=self.detector.mask,
                                      restore_mask=True)[0]
             #return self.data
             else: print 'Error with file'
@@ -102,11 +104,13 @@ class HitFinder(object):
         #return self.data
 
     def is_hit(self):
+        #tmp = self.data[2,::]
         return self.data[self.data >= self.threshold].size >= self.npixels
 
 
     def find_peaks(self):
-        return self.local_maxima(self.data.astype(np.int32), 3, 3, self.options['bragg_threshold'])
+        peaks = self.local_maxima(self.data.astype(np.int32), 3, 3, self.options['bragg_threshold'])
+        return peaks
 
     def validate_tuple(self, value, ndim):
         if not hasattr(value, '__iter__'):
@@ -128,7 +132,7 @@ class HitFinder(object):
 
     def local_maxima(self, image, radius, separation, threshold):
         ndim = image.ndim
-
+        threshold -= 1
         # The intersection of the image with its dilation gives local maxima.
         if not np.issubdtype(image.dtype, np.integer):
             raise TypeError("Perform dilation on exact (i.e., integer) data.")
@@ -141,7 +145,7 @@ class HitFinder(object):
 
         maxima = np.vstack(np.where((image == dilation) & (image > threshold))).T[:,::-1]
         if not np.size(maxima) > 0:
-            warnings.warn("Image contains no local maxima.", UserWarning)
+            #warnings.warn("Image contains no local maxima.", UserWarning)
             return np.empty((0, ndim))
 
         # Flat peaks return multiple nearby maxima. Eliminate duplicates.
@@ -166,8 +170,8 @@ class HitFinder(object):
         margin = int(separation) // 2
         near_edge = np.any((maxima < margin) | (maxima > (shape - margin)), 1)
         maxima = maxima[~near_edge]
-        if not np.size(maxima) > 0:
-            warnings.warn("All local maxima were in the margins.", UserWarning)
+        #if not np.size(maxima) > 0:
+            #warnings.warn("All local maxima were in the margins.", UserWarning)
 
 
         x, y = maxima[:,0], maxima[:,1]
@@ -183,12 +187,12 @@ class HitFinder(object):
             # Conversion to edf
             if 'edf' in self.options['output_formats']:
                 OutputFileName = os.path.join(self.result_folder, 'EDF_%s'%self.num.zfill(3), "%s.edf" % self.root)
-                edfout = fabio.edfimage.edfimage(data=self.data.astype(np.int32))
+                edfout = fabio.edfimage.edfimage(data=self.data.astype(np.float32))
                 edfout.write(OutputFileName)
 
             if 'cbf' in self.options['output_formats']:
                 OutputFileName = os.path.join(self.result_folder, 'CBF_%s'%self.num.zfill(3), "%s.cbf" % self.root)
-                cbfout = fabio.cbfimage.cbfimage(data=self.data.astype(np.int32))
+                cbfout = fabio.cbfimage.cbfimage(data=self.data.astype(np.float32))
                 cbfout.write(OutputFileName)
 
             # Conversion to H5
@@ -196,7 +200,7 @@ class HitFinder(object):
 
                 OutputFileName = os.path.join(self.result_folder, 'HDF5_%s'%self.num.zfill(3), "%s.h5" % self.root)
                 OutputFile = h5py.File(OutputFileName, 'w')
-                OutputFile.create_dataset("data", data=self.data.astype(np.int32))
+                OutputFile.create_dataset("data", data=self.data.astype(np.float32))
                 if self.options['bragg_search']:
                     OutputFile.create_dataset("processing/hitfinder/peakinfo", data=self.peaks.astype(np.int))
                 OutputFile.close()

@@ -15,32 +15,7 @@ from NPC.Azimuthal_Integrator import AI
 from NPC.HitFinder import HitFinder
 import NPC.utils as utils
 
-PUBSUB = False
-# Try to genuinely import pubsub #
-import wx
-version = wx.__version__.split('.')
-
-try:
-    if version[0] == '3' or (version[0] == '2' and int(version[1]) >= 9):
-        from wx.lib.pubsub import pub
-        PUBSUB = True
-    elif version[0] == '2' and version[1] == '8' and int(version[2]) >= 11:
-        from wx.lib.pubsub import setupkwargs
-        from wx.lib.pubsub import pub
-        PUBSUB = True
-except ImportError:
-    try:
-        from pubsub import pub
-        PUBSUB = True
-    except ImportError:
-        print """Pubsub not imported and therefore disabled.
-                 NPC uses the pubsub v3 API. It seems that your version of wxpython is outdated (<2.8.11)
-                 Please install a newer version of wxpython and restart NPC
-                 If this does not solve the problem, please contact us, with your latest configuration"""
-
-
 class DataProcessing(object):
-
     def __init__(self, options):
         # Common part
         self.options = options
@@ -52,6 +27,15 @@ class DataProcessing(object):
     def init_detector(self):
         self.detector = None
         if self.options['experiment'] == 'SSX':
+            if self.options['detector'] == 'eiger4m_fake':
+                from NPC.Detectors import Eiger_4M_fake
+                self.detector = Eiger_4M_fake()
+                return
+            if self.options['detector'].lower() == 'frelon':
+                from NPC.Detectors import Frelon
+                self.detector = Frelon()
+                return
+
             try:
                 detector_name = self.options['detector']
                 self.detector = pyFAI.detectors.Detector.factory(detector_name)
@@ -114,7 +98,6 @@ class DataProcessing_MPI(DataProcessing):
             self.get_filenames()
             if 'eiger' in self.options['detector'].lower(): self.run_eiger()
             else:
-
                 self.total = len(self.filenames)
                 for idx in xrange(self.rank,self.total,self.size):
                     fname = self.filenames[idx]
@@ -123,8 +106,11 @@ class DataProcessing_MPI(DataProcessing):
                     if hit == 1:
                         self.update_results(working)
                 self.get_final_stats()
+                
 
         def run_eiger(self):
+            #N_after_shutter= 2
+            #N_per_postion = 5
             self.get_filenames()
             for filename in self.filenames:
                 #if self.signal:
@@ -132,7 +118,7 @@ class DataProcessing_MPI(DataProcessing):
                 #run = h5.keys()[0]
                 for key in h5['entry']:
                     if 'data' in key:
-                        num_frames ,res0, res1 = h5['entry/{}'.format(key)].shape
+                        num_frames, res0, res1 = h5['entry/{}'.format(key)].shape
                         self.total += num_frames
                         myindexes = [j for j in xrange(num_frames) if (j+self.rank) % self.size == 0]
                         for index in myindexes:
@@ -159,6 +145,7 @@ class DataProcessing_MPI(DataProcessing):
                         self.update_results(working)
                 h5.close()
             self.get_final_stats()
+            self.save_maxproj()
 
         def run_lcls(self):
             ds = DataSource('exp=%s:run=%s:idx'%(self.options['experiment'],self.options['run']))
@@ -214,11 +201,11 @@ class DataProcessing_MPI(DataProcessing):
             num = str(self.options['num']).zfill(3)
 
             for output_format in self.options['output_formats'].split():
-                maxproj_directory = os.path.join(output_directory,"%s_%s"%(output_format,num),'MAX')
+                maxproj_directory = os.path.join(output_directory,"%s_%s"%(output_format.upper(),num),'MAX')
 
                 for data,root_name in ((cleanmax,'cleanmax'), (max_proj_final,'maxproj'), (avg_final,'avg')):
                     if output_format == 'hdf5':
-                        output_filename = os.path.join(maxproj_directory,'%s.%s'%(root_name,output_format))
+                        output_filename = os.path.join(maxproj_directory,'%s.h5'%(root_name))
                         image = h5py.File(output_filename)
                         image.create_dataset("data", data=data, compression="gzip")
                         image.close()
@@ -249,12 +236,8 @@ class DataProcessing_multiprocessing(DataProcessing):
         from MultiProcess import MProcess
         self.MProcess = MProcess
         self.start_mp()
-
         self.find_hits()
-        #Deal with dark
-        #self.calculate_mask()
-        #self.find_hits()
-
+        
     def start_mp(self):
         """ Start as many processes as set by the user
 	    """
@@ -279,6 +262,8 @@ class DataProcessing_multiprocessing(DataProcessing):
         self.avg = np.zeros_like(self.max_proj)
         self.cleanmax = np.zeros_like(self.max_proj)
 
+        print '\n= Job progression = Hit rate =    Max   =   Min   = Median = #Peaks '
+
         self.load_queue_mapping[self.experiment]()
         while self.out != self.total:
             self.get_results()
@@ -294,9 +279,6 @@ class DataProcessing_multiprocessing(DataProcessing):
             tags = h5['%s/event_info/tag_number_list'%run][:]
             h5.close()
             tasks += [(filename,run,tag) for tag in tags]
-
-        tasks = utils.randomize(tasks,self.options['randomizer'])
-        print '\n= Job progression = Hit rate =    Max   =   Min   = Median = #Peaks '
         self.total = len(tasks)
         self.chunk = max(int(round(float(self.total) / 1000.)), 10)
 
@@ -311,11 +293,10 @@ class DataProcessing_multiprocessing(DataProcessing):
             self.tasks.put(None)
 
     def load_ssx_queue(self):
-        if 'eiger' in self.options['detector'].lower(): self.load_eiger_queue()
+        det = self.options['detector'].lower()
+        print  self.options['file_extension']
+        if 'eiger' in det and 'h5' in self.options['file_extension']: self.load_eiger_queue()
         else:
-
-            self.filenames = utils.randomize(self.filenames,self.options['randomizer'])
-            print '\n= Job progression = Hit rate =    Max   =   Min   = Median = #Peaks '
             self.total = len(self.filenames)
             self.chunk = max(int(round(float(self.total) / 1000.)), 10)
 
@@ -326,22 +307,30 @@ class DataProcessing_multiprocessing(DataProcessing):
             for i in xrange(self.options['cpus']):
                 self.tasks.put(None)
 
+    def visitor_func(self,name,node):
+       if isinstance(node, h5py.Dataset):
+                if node.shape[1] * node.shape[2]  > 512*512: return node.name
 
     def load_eiger_queue(self):
         tasks = []
+        #N_per_position = 5
+        #N_after_shutter = 2
+        path = 'entry'
         self.total = 0
         for filename in self.filenames:
-            #if self.signal:
+            h5path = 'entry/data/data'
             h5=h5py.File(filename)
-            for key in h5['entry']:
-                if 'data' in key:
-                    num_frames ,res0, res1 = h5['entry/{}'.format(key)].shape
-                    self.total += num_frames
-                    tasks += [(filename,key,i) for i in xrange(num_frames)]
+            #h5path = h5.visititems(self.visitor_func)
+            try:
+                       num_frames ,res0, res1 = h5[h5path].shape
+                       self.total += num_frames
+                       tasks += [(filename,h5path,i) for i in xrange(num_frames)]
+            except KeyError: continue
             h5.close()
 
-        tasks = utils.randomize(tasks,self.options['randomizer'])
-        print '\n= Job progression = Hit rate =    Max   =   Min   = Median = #Peaks '
+        if self.options['randomizer'] not in [False, 0]:
+            tasks = [ tasks[i] for i in random.sample(xrange(len(tasks)),self.options['randomizer'])]
+        else: tasks = tasks
         self.total = len(tasks)
         self.chunk = max(int(round(float(self.total) / 1000.)), 10)
 
@@ -382,7 +371,6 @@ class DataProcessing_multiprocessing(DataProcessing):
 
         print '\nOverall, found %s hits in %s files --> %5.1f %% hit rate with a threshold of %s' % (
                    self.hit, self.total, (float(self.hit) / (self.total) * 100.), self.options['threshold'])
-        if PUBSUB: pub.sendMessage('Done')
         self.t2 = time.time()
         print "\nIt took %4.2f seconds to process %i images (i.e %4.2f images per second)" % (
             (self.t2 - self.t1), self.total, self.total / (self.t2 - self.t1))
@@ -390,7 +378,29 @@ class DataProcessing_multiprocessing(DataProcessing):
         if self.hit > 0:
             self.avg = self.avg / self.hit
             self.cleanmax = self.max_proj - self.avg
+            self.save_maxproj(self.cleanmax,self.max_proj,self.avg)
 
+    def save_maxproj(self,cleanmax,max_proj_final,avg_final):
+
+            output_directory=self.options['output_directory']
+            num = str(self.options['num']).zfill(3)
+
+            for output_format in self.options['output_formats'].split():
+                maxproj_directory = os.path.join(output_directory,"%s_%s"%(output_format.upper(),num),'MAX')
+                for data,root_name in ((cleanmax,'cleanmax'), (max_proj_final,'maxproj'), (avg_final,'avg')):
+                    if output_format == 'hdf5':
+                        output_filename = os.path.join(maxproj_directory,'%s.h5'%(root_name))
+                        image = h5py.File(output_filename,'w')
+                        image.create_dataset("data", data=data, compression="gzip")
+                        image.close()
+
+                    elif output_format == 'pickles':
+                        pass
+
+                    else:
+                        image=utils.get_class('fabio.%simage'%output_format,'%simage'%output_format)(data=data)
+                        output_filename = os.path.join(maxproj_directory,'%s.%s'%(root_name,output_format))
+                        image.write(output_filename)
 
 #===================================================================================================================
 if __name__ == '__main__':
@@ -427,15 +437,14 @@ if __name__ == '__main__':
                'data': '/Users/nico/IBS2013/Projects/SERIALX/IRISFP',
                'root': 'shot',
                'file_extension': '.h5',
-               'randomizer': 10,
+               'randomizer': False,
                'runs': '1-2',
                'cpus': 1,
                'threshold': 1000,
                'npixels': 100,
                'background_subtraction': 'None',
                'bragg_search': False,
-               'mask': 'none',
-               'dark': 'none'
+               'mask': '/Users/nico/Sacla_mask_ones.h5'
                }
 
     options_SSX = {
@@ -460,9 +469,10 @@ if __name__ == '__main__':
                 'mask': 'None',
                 'dark': 'none'
                }
-    Test = DataProcessing_multiprocessing(options_SSX)
+    #Test = DataProcessing_multiprocessing(options_SSX)
     #Test = DataProcessing_multiprocessing(options_SACLA)
     #Test = DataProcessing_multiprocessing(options_EIGER)
     #Test = DataProcessing_MPI(options_SSX)
+    Test = DataProcessing_MPI(options_LCLS)
     #Test = DataProcessing_MPI(options_SACLA)
     #Test = DataProcessing_MPI(options_EIGER)

@@ -34,13 +34,14 @@ class MProcess(multiprocessing.Process):
         return
 
     def set_data_ssx(self,filename):
-        if 'eiger' in self.options['detector'].lower():
+        if 'eiger' in self.options['detector'].lower() and 'h5' in self.options['file_extension']:
             return self.set_data_eiger(filename)
         else:
             self.HitFinder.data = fabio.open(filename).data
             return self.HitFinder.get_hit(filename)
 
     def set_data_eiger(self,task):
+        #N_per_position = 5
         filename, group, index = task
         if self.h5 == None:
             self.h5 = h5py.File(filename)
@@ -49,7 +50,7 @@ class MProcess(multiprocessing.Process):
             self.h5.close()
             self.h5 = h5py.File(filename)
             self.h5_filename = filename
-        self.HitFinder.data = self.h5['entry/%s'%group][index,::]
+        self.HitFinder.data = self.h5[group][index,::]
         return self.HitFinder.get_hit(task)
 
     def set_data_sacla(self,task):
