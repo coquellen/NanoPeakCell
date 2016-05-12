@@ -321,7 +321,6 @@ class DataProcessing_multiprocessing(DataProcessing):
     def load_eiger_queue(self):
 
         self.h5path, self.overload = self.geth5path(self.filenames[0])
-        print self.h5path, self.overload
         tasks = []
         self.total = 0
         for filename in self.filenames:
