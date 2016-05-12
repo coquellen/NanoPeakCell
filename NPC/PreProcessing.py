@@ -109,13 +109,11 @@ class DataProcessing_MPI(DataProcessing):
                 
 
         def run_eiger(self):
-            #N_after_shutter= 2
-            #N_per_postion = 5
+
             self.get_filenames()
             for filename in self.filenames:
-                #if self.signal:
+
                 h5=h5py.File(filename)
-                #run = h5.keys()[0]
                 for key in h5['entry']:
                     if 'data' in key:
                         num_frames, res0, res1 = h5['entry/{}'.format(key)].shape
@@ -307,24 +305,33 @@ class DataProcessing_multiprocessing(DataProcessing):
             for i in xrange(self.options['cpus']):
                 self.tasks.put(None)
 
+
+
     def visitor_func(self,name,node):
        if isinstance(node, h5py.Dataset):
                 if node.shape[1] * node.shape[2]  > 512*512: return node.name
 
+    def geth5path(self, fn):
+        h5 = h5py.File(fn)
+        path = h5.visititems(self.visitor_func)
+        ovl = np.iinfo(h5[path].dtype).max
+        h5.close()
+        return (path, ovl)
+
     def load_eiger_queue(self):
+
+        self.h5path, self.overload = self.geth5path(self.filenames[0])
+        print self.h5path, self.overload
         tasks = []
-        #N_per_position = 5
-        #N_after_shutter = 2
-        path = 'entry'
         self.total = 0
         for filename in self.filenames:
-            h5path = 'entry/data/data'
+            #h5path = 'entry/data/data'
             h5=h5py.File(filename)
             #h5path = h5.visititems(self.visitor_func)
             try:
-                       num_frames ,res0, res1 = h5[h5path].shape
+                       num_frames ,res0, res1 = h5[self.h5path].shape
                        self.total += num_frames
-                       tasks += [(filename,h5path,i) for i in xrange(num_frames)]
+                       tasks += [(filename,self.h5path,i,self.overload) for i in xrange(num_frames)]
             except KeyError: continue
             h5.close()
 

@@ -6,11 +6,6 @@ from scipy import ndimage
 from scipy.spatial import KDTree as cKDTree
 
 try:
-    from wx.lib.pubsub import pub
-except ImportError:
-    from pubsub import pub
-
-try:
     from xfel.cxi.cspad_ana.cspad_tbx import dpack
     from xfel.command_line.cxi_image2pickle import crop_image_pickle  # , evt_timestamp
     from libtbx import easy_pickle
@@ -37,20 +32,20 @@ class HitFinder(object):
         self.threshold = self.options['threshold']
         self.npixels = self.options['npixels']
         self.extend = 15
+        dim1 = self.detector.shape[0]
+        dim2 = self.detector.shape[1]
+        self.data = np.empty((dim1, dim2))
 
-        #peakslist = []
 
-    #@profile
     def open(self,filename):
-        #try:
-            if filename.endswith('h5'):
+        if filename.endswith('h5'):
                 h5 = h5py.File(filename)
                 data = h5['data'][:]
                 h5.close()
                 return data
-            else:
+        else:
                 return fabio.open(filename).data
-        #except:
+
     def get_hit(self,name):
         self.apply_mask()
         self.remove_beam_center()
@@ -68,10 +63,10 @@ class HitFinder(object):
         self.data[:] = self.data * np.logical_not(self.detector.mask) - self.dark
         #temporary work around for complete dead modules
         #ID13_Eiger 
-        self.data [ self.data == 65535 ] = 0
+        #self.data [ self.data == 65535 ] = 0
     def set_ssx(self, fname):
         if 'eiger' in self.options['detector'].lower() and 'h5' in self.options['file_extension']:
-            filename, group, index = fname
+            filename, group, index, ovl = fname
             fileout = filename.split('.h5')[0]
             fileout = os.path.basename(fileout)
             self.root = "%s_%s"%(fileout, str(index).zfill(6))

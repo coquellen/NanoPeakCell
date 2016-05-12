@@ -18,8 +18,8 @@ class CSPAD(Detector):
         Detector.__init__(self)
         self.resolution=(1750,1750)
         self.shape = self.resolution
-        self.pixel1 = 5e-5
-        self.pixel2 = 5e-5
+        self.pixel1 = 11e-5
+        self.pixel2 = 11e-5
         self.mask = np.zeros(self.shape)
         self.spline = None
 

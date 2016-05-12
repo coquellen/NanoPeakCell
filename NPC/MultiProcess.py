@@ -41,16 +41,16 @@ class MProcess(multiprocessing.Process):
             return self.HitFinder.get_hit(filename)
 
     def set_data_eiger(self,task):
-        #N_per_position = 5
-        filename, group, index = task
+        filename, group, index, ovl = task
         if self.h5 == None:
-            self.h5 = h5py.File(filename)
+            self.h5 = h5py.File(filename,'r')
             self.h5_filename = filename
         if filename != self.h5_filename:
             self.h5.close()
-            self.h5 = h5py.File(filename)
+            self.h5 = h5py.File(filename,'r')
             self.h5_filename = filename
-        self.HitFinder.data = self.h5[group][index,::]
+        self.HitFinder.data[:] = self.h5[group][index,::]
+        self.HitFinder.data[ self.HitFinder.data >= ovl] = 0
         return self.HitFinder.get_hit(task)
 
     def set_data_sacla(self,task):
