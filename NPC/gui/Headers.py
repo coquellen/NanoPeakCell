@@ -30,5 +30,11 @@ def readheader(header,filename):
 	    
             if 'Wavelength' in setting:
                 wl=setting.split()[2]
-        return distance, psx, psy, wl, bx, by
+
+            if 'Detector:' in setting:
+                det0 = setting.split()[2].strip(',')
+                det0 = det0[0].upper()+det0[1:].lower()
+                det1 = setting.split()[3].strip(',')
+                det = det0 + det1
+        return distance, psx, psy, wl, bx, by, det
        

@@ -60,7 +60,8 @@ class DataProcessing_MPI(DataProcessing):
                 from mpi4py import MPI
             except RuntimeError:
                 print 'If you want to use the MPI option, please install OpenMPI and mpi4py'
-                print 'Switching back to Multiprocessing'
+                #print 'Switching back to Multiprocessing'
+
                 sys.exit(1)
             self.MPI = MPI
             self.comm = MPI.COMM_WORLD
