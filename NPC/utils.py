@@ -121,6 +121,7 @@ def get_filenames(options):
         filename_root = options['filename_root']
         file_extension = options['file_extension']
         data_folder = options['data']
+        randomizer = options['randomizer']
 
         f = []
         print 'Looking for files that match your parameters... Please wait'
@@ -129,26 +130,19 @@ def get_filenames(options):
                 if filename_root == None:
                     if filename.endswith(file_extension): f.append(filename)
                 else:
-                    if filename.endswith(file_extension) and filename.startswith(filename_root):
+                    if filename.endswith(file_extension) and filename.startswith(filename_root) and 'master.h5' not in filename:
                         f.append(os.path.join(root, filename))
         tot = len(f)
         if tot == 0:
             print 'Sorry, no file to be processed'
             sys.exit(1)
-        else: return f
-        #
 
+        #if randomizer not in [ 0, 'None', 'False']:
 
-def randomize(f,randomizer):
-        try: tot = len(f)
-        except TypeError:
-            print 'Sorry, no file to be processed'
-            sys.exit(1)
-        if randomizer not in [ 0, 'None', 'False']:
-            f = random.sample(f, randomizer)
-            print '%i files have been found and %i will be processed' % (tot, len(f))
-        else:
-            print '%i files have been found and will be processed' % tot
+        #    f = random.sample(f, randomizer)
+        #    print '%i files have been found and %i will be processed' % (tot, len(f))
+        #else:
+        print '%i files have been found and will be processed' % tot
 
         return f
 
