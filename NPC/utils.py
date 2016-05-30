@@ -122,7 +122,7 @@ def get_filenames(options):
         file_extension = options['file_extension']
         data_folder = options['data']
         randomizer = options['randomizer']
-
+        if filename_root.endswith('master') : filename_root = filename_root.replace('master','')
         f = []
         print 'Looking for files that match your parameters... Please wait'
         for root, dirnames, filenames in os.walk(data_folder, followlinks=True):

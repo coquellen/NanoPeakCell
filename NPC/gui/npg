@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 
+import pkg_resources as pkg
 from PyQt4 import QtCore, QtGui
 from NPC.gui.npc_qt4_ui import Ui_MainWindow as Ui_NPC
 from NPC.gui.npg_int_ui import Ui_Intensities
 from NPC.gui.ROIViewBow import CustomViewBox
 
 from NPC.gui.Frame import ImageFactory
-import NPC.gui.Headers
+import NPC.gui.Headers as Headers
 from NPC.gui.geom import parse_geom_file, reconstruct
-import NPC.HitFinder as pf
+import NPC.gui.peakfind as pf
 import NPC
 
 import pyqtgraph as pg
@@ -60,7 +61,7 @@ class NPG(QtGui.QMainWindow):
         self.imgfact = ImageFactory(self.ui.treeWidget, self)
 
         # Bragg Spot Parameters
-        self.MaxBraggs = 1000
+        self.MaxBraggs = 2000
         self.MaxOverThreshold = 10000
         self.max_t = 0
         self.filename_cache = None
@@ -115,7 +116,7 @@ class NPG(QtGui.QMainWindow):
         self.ui.ColorMap.currentIndexChanged.connect(self.updateCmap)
 
         # Bindings - ViewBox
-        self.proxy = pg.SignalProxy(self.view.scene().sigMouseMoved, rateLimit=60, slot=self.mouseMoved)
+        self.proxy = pg.SignalProxy(self.view.scene().sigMouseMoved, rateLimit=10, slot=self.mouseMoved)
         self.view.scene().sigMouseClicked.connect(self.getIntensities)
         #self.connect(self, QtCore.SIGNAL("keyPressed()"),self.ROI)
 
@@ -330,7 +331,8 @@ class NPG(QtGui.QMainWindow):
 
     def updateCmap(self):
         cmap = self.ui.ColorMap.currentText()
-        self.cmap = np.load(os.path.join(self.root,'gui','cmaps',"%s.npy"% str(cmap)))
+        self.cmap = np.load(pkg.resource_filename('NPC','gui/cmaps/%s.npy'%cmap))
+        #self.cmap = np.load(os.path.join(self.root,'gui','cmaps',"%s.npy"% str(cmap)))
         self.img.setLookupTable(self.cmap)
         self.color = color_mapping[str(self.ui.ColorMap.currentText())]
         if self.beam is not None: self.beam.setBrush(pg.mkBrush(self.color))
@@ -392,11 +394,11 @@ class NPG(QtGui.QMainWindow):
                 xmax, ymax = self.data.shape
                 if self.cursorx > 0 and self.cursory > 0 and self.cursorx < xmax and self.cursory < ymax:
                     res = self.getResolution(self.cursorx, self.cursory)
-                    self.PlotItem.setTitle("<span style='font-size: 12pt'>x %4i -- y %4i" %(self.cursorx, self.cursory) + '&nbsp;'*150 + "<span style='color: red'>Res: %s </span>"%res)
+                    self.PlotItem.setTitle("<span style='font-size: 12pt'>x %4i -- y %4i" %(self.cursorx, self.cursory) + '&nbsp;'*15 + "<span style='color: red'>Res: %s </span>"%res)
                     #self.PlotItem.hideAxis('top')
                     #self.PlotItem.showLabel('top')
             except AttributeError:
-                self.PlotItem.setTitle("<span style='font-size: 12pt'>x      -- <span style='color: red'>y     </span>"+ '&nbsp;'*150 + "<span style='color: red'>Res:</span>" )
+                self.PlotItem.setTitle("<span style='font-size: 12pt'>x      -- y     </span>"+ '&nbsp;'*15 + "<span style='color: red'>Res:</span>" )
 
     def updateTree(self):
         self.item = self.ui.treeWidget.currentItem()
@@ -692,8 +694,9 @@ if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
     start = time()
 
-    root = os.path.dirname(os.path.abspath(NPC.__file__))
-    splash_pix = QtGui.QPixmap(os.path.join(root,'bitmaps', 'NPC.png'))
+    fn = pkg.resource_filename('NPC','bitmaps/NPC.png')
+    #root = os.path.dirname(os.path.abspath(NPC.__file__))
+    splash_pix = QtGui.QPixmap(fn)
     splash = QtGui.QSplashScreen(splash_pix)#, QtCore.Qt.WindowStaysOnTopHint)
     splash.setMask(splash_pix.mask())
     splash.show()

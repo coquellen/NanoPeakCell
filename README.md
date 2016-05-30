@@ -12,7 +12,7 @@ Background subtraction performed on a per-frame basis (using pyFAI azimuthal int
 Bragg peak localisation (sub-pixel refinement)
 Conversion into the appropriate format for further data processing:
 h5 --> crystFEL
-pickle --> cctbx.xfel
+pickle --> cctbx.xfel / cppxfel
 cbf --> nXDS  
 
 NPC dependencies:
@@ -26,8 +26,8 @@ cctbx.xfel (to save in the appropriate pickle format)
 
 Gui dependencies:
 -----------------
-*matplotlib
-*wxpython
+*PyQt4 (and hence Qt4)
+*pyqtgraph
 
 
 Extra dependencies:

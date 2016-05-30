@@ -7,7 +7,7 @@ setup(
 	author        =   "Nicolas Coquelle",
 	author_email  =   "coquelle@ibs.fr",
 	packages      =   find_packages(),
-    package_data={'': ['bitmaps/*','gui/cmaps/*']},
+    package_data={'NPC': ['bitmaps/*','gui/cmaps/*']},
 	scripts = ['NPC/npc','NPC/gui/npg'],
 
 )
