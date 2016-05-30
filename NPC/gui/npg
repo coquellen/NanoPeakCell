@@ -357,7 +357,7 @@ class NPG(QtGui.QMainWindow):
         sdet = str(det)
         if sdet in ['MPCCD', 'CSPAD']:
             #print 'Here'
-            self.detector = get_class("Detectors",str(det))()
+            self.detector = get_class("NPC.Detectors",str(det))()
 
         else:
             self.detector = pyFAI.detectors.Detector.factory(str(det))
