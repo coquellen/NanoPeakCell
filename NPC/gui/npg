@@ -2,7 +2,7 @@
 
 import pkg_resources as pkg
 from PyQt4 import QtCore, QtGui
-from NPC.gui.npc_qt4_ui import Ui_MainWindow as Ui_NPC
+from NPC.gui.npg_qt4_ui import Ui_MainWindow
 from NPC.gui.npg_int_ui import Ui_Intensities
 from NPC.gui.ROIViewBow import CustomViewBox
 
@@ -51,7 +51,7 @@ class NPG(QtGui.QMainWindow):
     def __init__(self, app,parent=None):
         QtGui.QWidget.__init__(self, parent)
         self.app = app
-        self.ui = Ui_NPC()
+        self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         self.popup_int = ShowNumbers()
         self.data = None
