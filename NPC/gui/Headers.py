@@ -33,11 +33,9 @@ def readheader(header,filename):
 
             if 'Detector:' in setting:
                 det0 = setting.split()[2].strip(',')
-                #det0 = det0[0].upper()+det0[1:].lower()
                 if 'pilatus' in det0.lower(): det0 = 'Pilatus'
                 det1 = setting.split()[3].strip(',')
                 det = det0 + det1
-                print det
                 if det in ['Pilatus6M', 'Pilatus36M']: det = 'Pilatus6M'
         return distance, psx, psy, wl, bx, by, det
        
