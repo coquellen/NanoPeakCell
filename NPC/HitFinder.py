@@ -48,7 +48,6 @@ class HitFinder(object):
 
     def get_hit(self,name):
         self.apply_mask()
-        self.remove_beam_center()
         self.bkg_sub()
         if self.is_hit():
             self.set_output_filename_mapping[self.options['experiment']](name)
@@ -92,12 +91,7 @@ class HitFinder(object):
             #return self.data
             else: print 'Error with file'
 
-    def remove_beam_center(self):
-        #Remove beam stop area (i.e = 0)
-        self.data[self.options['beam_y'] - self.extend:self.options['beam_y'] + self.extend,
-                  self.options['beam_x'] - self.extend:self.options['beam_x'] + self.extend] = 0
-        #return self.data
-
+    
     def is_hit(self):
         #tmp = self.data[2,::]
         return self.data[self.data >= self.threshold].size >= self.npixels
