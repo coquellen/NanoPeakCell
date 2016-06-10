@@ -3,16 +3,12 @@ import time
 import multiprocessing
 import os
 import Queue
-
 import pyFAI
 import pyFAI.detectors
 import numpy as np
 import h5py
 import fabio
-import random
-
 from NPC.Azimuthal_Integrator import AI
-from NPC.HitFinder import HitFinder
 import NPC.utils as utils
 
 class DataProcessing(object):
@@ -224,168 +220,89 @@ class DataProcessing_multiprocessing(DataProcessing):
 
         DataProcessing.__init__(self, options)
         utils.startup(self.options)
-        self.filenames = self.get_filenames_mapping[self.experiment](self.options)
-        #Specific
-        self.load_queue_mapping = {'SSX':self.load_ssx_queue, 'SFX_SACLA':self.load_sacla_queue}
-
-
+        self.live = self.options['live']
         self.run()
 
     def run(self):
-        from MultiProcess import MProcess
+        from MultiProcess import MProcess, FileSentinel
+        self.tasks = multiprocessing.JoinableQueue(maxsize=10000)
+        self.N_queue = multiprocessing.Queue()
+        self.results = multiprocessing.Queue()
+
         self.MProcess = MProcess
         self.start_mp()
+        self.FileSentinel = FileSentinel
+        self.start_FS()
+
         self.find_hits()
-        
+
+    def start_FS(self):
+        self.FS = self.FileSentinel(self.tasks, self.N_queue, self.options, self.detector, self.ai)
+        self.FS.start()
+
     def start_mp(self):
         """ Start as many processes as set by the user
-	    """
-        self.tasks = multiprocessing.JoinableQueue(maxsize=10000)
-        self.results = multiprocessing.Queue()
+    	"""
         self.consumers = [
             self.MProcess(self.tasks, self.results, self.options, self.detector,
-                     self.ai) for i in xrange(self.options['cpus'])]
+                              self.ai) for i in xrange(self.options['cpus'])]
         for w in self.consumers:
             w.start()
 
     def find_hits(self):
         self.t1 = time.time()
         self.hit = 0
-        self.peaks_all_frame = []
-        self.hitnames = []
         self.out = 0
-        self.signal = True
         self.total = 0
 
-        self.max_proj = np.zeros(self.detector.shape, np.float32)
-        self.avg = np.zeros_like(self.max_proj)
-        self.cleanmax = np.zeros_like(self.max_proj)
 
-        print '\n= Job progression = Hit rate =    Max   =   Min   = Median = #Peaks '
-
-        self.load_queue_mapping[self.experiment]()
-        while self.out != self.total:
-            self.get_results()
-        self.get_final_stats()
-
-
-    def load_sacla_queue(self):
-        tasks = []
-        for filename in self.filenames:
-            #if self.signal:
-            h5=h5py.File(filename)
-            run = h5.keys()[0]
-            tags = h5['%s/event_info/tag_number_list'%run][:]
-            h5.close()
-            tasks += [(filename,run,tag) for tag in tags]
-        self.total = len(tasks)
-        self.chunk = max(int(round(float(self.total) / 1000.)), 10)
-
-        for task in tasks:
-                self.tasks.put(task, block=True, timeout=None)
-
-                self.get_results()
-            #else:
-            #    break
-
-        for i in xrange(self.options['cpus']):
-            self.tasks.put(None)
-
-    def load_ssx_queue(self):
-        det = self.options['detector'].lower()
-        print  self.options['file_extension']
-        if 'eiger' in det and 'h5' in self.options['file_extension']: self.load_eiger_queue()
+        if self.live:
+            while True:
+              self.get_results()
+              time.sleep(0.1)
         else:
-            self.total = len(self.filenames)
-            self.chunk = max(int(round(float(self.total) / 1000.)), 10)
-
-            for fname in self.filenames:
-                self.tasks.put(fname, block=True, timeout=None)
-                self.get_results()
-
-            for i in xrange(self.options['cpus']):
-                self.tasks.put(None)
-
-
-
-    def visitor_func(self,name,node):
-       if isinstance(node, h5py.Dataset):
-                if node.shape[1] * node.shape[2]  > 512*512: return node.name
-
-    def geth5path(self, fn):
-        h5 = h5py.File(fn)
-        path = h5.visititems(self.visitor_func)
-        ovl = np.iinfo(h5[path].dtype).max
-        h5.close()
-        return (path, ovl)
-
-    def load_eiger_queue(self):
-
-        self.h5path, self.overload = self.geth5path(self.filenames[0])
-        tasks = []
-        self.total = 0
-        for filename in self.filenames:
-            #h5path = 'entry/data/data'
-            h5=h5py.File(filename)
-            #h5path = h5.visititems(self.visitor_func)
-            try:
-                       num_frames ,res0, res1 = h5[self.h5path].shape
-                       self.total += num_frames
-                       tasks += [(filename,self.h5path,i,self.overload) for i in xrange(num_frames)]
-            except KeyError: continue
-            h5.close()
-
-        if self.options['randomizer'] not in [False, 0]:
-            tasks = [ tasks[i] for i in random.sample(xrange(len(tasks)),self.options['randomizer'])]
-        else: tasks = tasks
-        self.total = len(tasks)
-        self.chunk = max(int(round(float(self.total) / 1000.)), 10)
-
-        for task in tasks:
-                self.tasks.put(task, block=True, timeout=None)
-                self.get_results()
-
-        for i in xrange(self.options['cpus']):
-            self.tasks.put(None)
+          while self.out != self.total or self.out == 0:
+            self.get_results()
+          self.get_final_stats()
 
 
     def get_results(self):
 
             while True:
                 try:
-                    hit, imgmax, imgmin, imgmed, peaks,working = self.results.get(block=True, timeout=0.01)
+                    self.total = self.N_queue.get(block=True, timeout=0.01)
+                except:
+                    pass
+
+                self.chunk = self.chunk = max(int(round(float(self.total) / 1000.)), 10)
+
+                try:
+                    hit, imgmax, imgmin, imgmed, peaks = self.results.get(block=False, timeout=None)
                     self.hit += hit
                     self.out += 1
                     percent = (float(self.out) / (self.total)) * 100.
                     hitrate = (float(self.hit) / float(self.out)) * 100.
-                    if hit == 1:
-                        #self.hitnames.append(fname)
-                        self.avg += working
-                        maxids = np.where(working > self.max_proj)
-                        self.max_proj[maxids] = working[maxids]
+
                     if self.out % self.chunk == 0:
-                        print '     %6.2f %%       %5.1f %%    %8.2f    %7.2f  %6.2f %4d  (%i out of %i images) \r' % (
-                                percent, hitrate, imgmax, imgmin, imgmed,peaks, self.out, self.total),
+                        print('     %6.2f %%       %5.1f %%    %8.2f    %7.2f  %6.2f %4d  (%i out of %i images processed - %i hits) \r') % (
+                                     percent,      hitrate,    imgmax, imgmin, imgmed, peaks, self.out, self.total, self.hit),
                         sys.stdout.flush()
+
                 except Queue.Empty:
                     break
 
-
-
-    # Common to DataProcessing_multiprocessing
-
     def get_final_stats(self):
 
-        print '\nOverall, found %s hits in %s files --> %5.1f %% hit rate with a threshold of %s' % (
+        print('\n\nOverall, found %s hits in %s files --> %5.1f %% hit rate with a threshold of %s')% (
                    self.hit, self.total, (float(self.hit) / (self.total) * 100.), self.options['threshold'])
         self.t2 = time.time()
-        print "\nIt took %4.2f seconds to process %i images (i.e %4.2f images per second)" % (
+        print("It took %4.2f seconds to process %i images (i.e %4.2f images per second)")% (
             (self.t2 - self.t1), self.total, self.total / (self.t2 - self.t1))
 
-        if self.hit > 0:
-            self.avg = self.avg / self.hit
-            self.cleanmax = self.max_proj - self.avg
-            self.save_maxproj(self.cleanmax,self.max_proj,self.avg)
+        #if self.hit > 0:
+        #    self.avg = self.avg / self.hit
+        #    self.cleanmax = self.max_proj - self.avg
+        #    self.save_maxproj(self.cleanmax,self.max_proj,self.avg)
 
     def save_maxproj(self,cleanmax,max_proj_final,avg_final):
 
@@ -462,24 +379,27 @@ if __name__ == '__main__':
                 'beam_y': 515,
                 'wavelength': 0.832,
                 'output_directory': '.',
-                'num': 1,
-                'output_formats': '',
-                'data': '/Users/nico/IBS2013/Projects/Ubi/img',
+                'num': '1',
+                'output_formats': 'hdf5',
+                'data': '/Users/coquelleni/PycharmProjects/tmp',
                 'filename_root': 'b3rod',
                 'file_extension': '.cbf',
-                'randomizer': 100,
-                'cpus': 4,
-                'threshold': 100,
-                'npixels': 10,
+                'randomizer': 0,
+                'cpus': 8,
+                'threshold': 40,
+                'npixels': 3,
                 'background_subtraction': 'None',
                 'bragg_search': False,
                 'mask': 'None',
-                'dark': 'none'
+                'dark': 'none',
+                'live': False,
+                #'ROI': 'None'
+                'ROI':  '1257 1231 2527 2463'
                }
-    #Test = DataProcessing_multiprocessing(options_SSX)
+    Test = DataProcessing_multiprocessing(options_SSX)
     #Test = DataProcessing_multiprocessing(options_SACLA)
     #Test = DataProcessing_multiprocessing(options_EIGER)
     #Test = DataProcessing_MPI(options_SSX)
-    Test = DataProcessing_MPI(options_LCLS)
+    #Test = DataProcessing_MPI(options_LCLS)
     #Test = DataProcessing_MPI(options_SACLA)
     #Test = DataProcessing_MPI(options_EIGER)

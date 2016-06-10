@@ -27,14 +27,15 @@ Experimental_Setup = {
 Hit_Finding_Parameters = {'threshold': (int, 0),
                           'npixels': (int, 20),
                           'bragg_search': (parseBoolString, False),
-                          'bragg_threshold': (int, 10)}
+                          'bragg_threshold': (int, 10),
+                          'ROI': (str, 'none')}
 
 General = {'experiment': (str, 'SSX'),
            'cpus': (int, 4),
            'parallelism': (str, 'multiprocessing'),
            'background_subtraction': (str, None),
-           'detector_correction': (parseBoolString, False),
-           'randomizer': (int, 0)}
+           'randomizer': (int, 0),
+           'live': (bool, False)}
 
 IO_SSX = {
     'output_formats': (str, 'hdf5'),
@@ -181,7 +182,8 @@ if __name__ == '__main__':
         options.update(npc_parser.mapping[key])
 
     options['num'] = get_result_folder_number(options)
-    print options
+    #print options
+
     if options['parallelism'] == 'MPI':
         from NPC.PreProcessing import DataProcessing_MPI as DataProc
     else:

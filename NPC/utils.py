@@ -1,7 +1,6 @@
 import os
-import random
 import sys
-#import importlib
+import importlib
 
 def startup(options):
     presenter()
@@ -54,12 +53,6 @@ def get_class(module_name,class_name):
     # get the class, will raise AttributeError if class cannot be found
     c = getattr(m, class_name)
     return c
-
-
-
-
-
-
 
 def save_stats(options):
     pass
@@ -116,16 +109,20 @@ def get_files_sacla(options):
     return filenames
 
 
-def get_filenames(options):
+def get_filenames(options, fns=[]):
         
         filename_root = options['filename_root']
         file_extension = options['file_extension']
         data_folder = options['data']
-        randomizer = options['randomizer']
+        live = options['live']
+        #live = True
         if filename_root.endswith('master') : filename_root = filename_root.replace('master','')
         f = []
-        print 'Looking for files that match your parameters... Please wait'
+        if not fns: print('Looking for files that match your parameters... Please wait')
         for root, dirnames, filenames in os.walk(data_folder, followlinks=True):
+            if fns:
+                filenames = [x for x in filenames if os.path.join(root, x) not in fns]
+
             for filename in filenames:
                 if filename_root == None:
                     if filename.endswith(file_extension): f.append(filename)
@@ -133,16 +130,16 @@ def get_filenames(options):
                     if filename.endswith(file_extension) and filename.startswith(filename_root) and 'master.h5' not in filename:
                         f.append(os.path.join(root, filename))
         tot = len(f)
-        if tot == 0:
-            print 'Sorry, no file to be processed'
-            sys.exit(1)
-
-        #if randomizer not in [ 0, 'None', 'False']:
-
-        #    f = random.sample(f, randomizer)
-        #    print '%i files have been found and %i will be processed' % (tot, len(f))
-        #else:
-        print '%i files have been found and will be processed' % tot
+        if tot == 0 and not fns:
+            if live:
+                print('\n= Job progression = Hit rate =    Max   =   Min   = Median = #Peaks ')
+                return f
+            else:
+                print('Sorry, no file to be processed... Yet ?')
+                sys.exit(1)
+        if not fns:
+            print('%i files have been found and will be processed')% tot
+            print('\n= Job progression = Hit rate =    Max   =   Min   = Median = #Peaks ')
 
         return f
 

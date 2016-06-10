@@ -5,14 +5,6 @@ import numpy as np
 from scipy import ndimage
 from scipy.spatial import KDTree as cKDTree
 
-try:
-    from xfel.cxi.cspad_ana.cspad_tbx import dpack
-    from xfel.command_line.cxi_image2pickle import crop_image_pickle  # , evt_timestamp
-    from libtbx import easy_pickle
-    from scitbx.array_family import flex
-    cctbx = True
-except ImportError:
-    cctbx = False
 
 
 class HitFinder(object):
@@ -32,9 +24,24 @@ class HitFinder(object):
         self.threshold = self.options['threshold']
         self.npixels = self.options['npixels']
         self.extend = 15
-        dim1 = self.detector.shape[0]
-        dim2 = self.detector.shape[1]
-        self.data = np.empty((dim1, dim2))
+        self.type = np.float32
+
+        if self.options['ROI'] == 'None':
+            dim1 = self.detector.shape[0]
+            dim2 = self.detector.shape[1]
+            self.data = np.empty((dim1, dim2))
+            self.xmax = dim1
+            self.xmin = 0
+            self.ymin = 0
+            self.ymax = dim2
+
+        else:
+            self.xmin, self.xmax, self.ymin, self.ymax = self.options['ROI_tuple']
+            dim1 = self.xmax - self.xmin
+            dim2 = self.ymax - self.ymin
+            self.data = np.empty((dim1, dim2))
+            #print self.data.shape
+
 
 
     def open(self,filename):
@@ -54,19 +61,17 @@ class HitFinder(object):
             self.hit = 1
             if self.options['bragg_search']:
                 self.peaks = self.find_peaks()
-            self.save_hit()
+            #self.save_hit()
         else: self.hit = 0
-        return self.hit, np.max(self.data), np.min(self.data), np.median(self.data), len(self.peaks), self.data
+        return self.hit, np.max(self.data), np.min(self.data), np.median(self.data), len(self.peaks)#, self.data
 
     def apply_mask(self):
-        self.data[:] = self.data * np.logical_not(self.detector.mask) - self.dark
-        #temporary work around for complete dead modules
-        #ID13_Eiger 
-        #self.data [ self.data == 65535 ] = 0
+        self.data[:] = self.data * np.logical_not(self.detector.mask[self.xmin:self.xmax,self.ymin:self.ymax]) - self.dark[self.xmin:self.xmax,self.ymin:self.ymax]
+
     def set_ssx(self, fname):
         if 'eiger' in self.options['detector'].lower() and 'h5' in self.options['file_extension']:
-            filename, group, index, ovl = fname
-            fileout = filename.split('.h5')[0]
+            self.filename, group, index, ovl, self.type = fname
+            fileout = self.filename.split('.h5')[0]
             fileout = os.path.basename(fileout)
             self.root = "%s_%s"%(fileout, str(index).zfill(6))
 
@@ -83,19 +88,22 @@ class HitFinder(object):
         self.root = '%s_%s_%i_%i'%(self.options['experiment'],self.options['runnumber'],id0,id1)
 
     def bkg_sub(self):
-        if self.options['background_subtraction'] !=  'None':
+        if self.options['background_subtraction'].lower() !=  'none':
             if self.data.shape == self.detector.shape:
-            #BkgCorr with pyFAI Azimuthal Integrator
+                #BkgCorr with pyFAI Azimuthal Integrator
                 self.data = self.ai.ai.separate(self.data.astype("float64"), npt_rad=1024, npt_azim=512, unit="2th_deg", percentile=50, mask=self.detector.mask,
                                      restore_mask=True)[0]
-            #return self.data
             else: print 'Error with file'
 
-    
-    def is_hit(self):
-        #tmp = self.data[2,::]
-        return self.data[self.data >= self.threshold].size >= self.npixels
+    def remove_beam_center(self):
+        #Remove beam stop area (i.e = 0)
+        self.data[self.options['beam_y'] - self.extend:self.options['beam_y'] + self.extend,
+                  self.options['beam_x'] - self.extend:self.options['beam_x'] + self.extend] = 0
 
+
+    def is_hit(self):
+
+        return self.data[self.data >= self.threshold].size >= self.npixels
 
     def find_peaks(self):
         peaks = self.local_maxima(self.data.astype(np.int32), 3, 3, self.options['bragg_threshold'])
@@ -173,6 +181,9 @@ class HitFinder(object):
 
             self.result_folder = self.options['output_directory']
             self.num = self.options['num']
+            #if self.options['ROI'].lower() is not 'none':
+
+
             # Conversion to edf
             if 'edf' in self.options['output_formats']:
                 OutputFileName = os.path.join(self.result_folder, 'EDF_%s'%self.num.zfill(3), "%s.edf" % self.root)
@@ -189,7 +200,7 @@ class HitFinder(object):
 
                 OutputFileName = os.path.join(self.result_folder, 'HDF5_%s'%self.num.zfill(3), "%s.h5" % self.root)
                 OutputFile = h5py.File(OutputFileName, 'w')
-                OutputFile.create_dataset("data", data=self.data.astype(np.float32))
+                OutputFile.create_dataset("data", data=self.data, compression="gzip", dtype=self.type)
                 if self.options['bragg_search']:
                     OutputFile.create_dataset("processing/hitfinder/peakinfo", data=self.peaks.astype(np.int))
                 OutputFile.close()
@@ -209,8 +220,6 @@ class HitFinder(object):
                     data = crop_image_pickle(data)
                     OutputFileName = os.path.join(self.result_folder, 'PICKLES_%s'%self.num.zfill(3), "%s.pickle" % self.root)
                     easy_pickle.dump(OutputFileName, data)
-
-
 
 if __name__ == '__main__':
     from test import options_SSX
