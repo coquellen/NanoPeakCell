@@ -92,7 +92,7 @@ class ImageFactory(object):
 
     def openimg(self,fn):
         img = fabio.open(fn)
-        return img.header, img.data.T
+        return img.header, img.data
 
     def openpickle(self,fn):
         try:

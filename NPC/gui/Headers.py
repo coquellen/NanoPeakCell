@@ -24,7 +24,7 @@ def readheader(header,filename):
 	            distance=str(float(setting.split()[2])*1000)
          
             if 'Beam_xy' in setting:
-                by,bx=setting[setting.find("(")+1:setting.find(")")].split(',')
+                bx,by=setting[setting.find("(")+1:setting.find(")")].split(',')
                 bx=bx.strip()
                 by=by.strip()
 	    
