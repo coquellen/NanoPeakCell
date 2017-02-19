@@ -1,0 +1,202 @@
+#!/usr/bin/env python
+import shutil
+
+
+try:
+    import ConfigParser
+except ImportError:
+    import configparser as ConfigParser
+import os.path
+import sys
+import NPC.utils as utils
+
+def parseBoolString(s):
+    return s.strip().lower() in ('true', 't', 'yes', '1')
+
+CrystFEL = {'beam_divergence': (float, 1),
+            'pixel_size': (float, 100),
+            'beam_bandwidth': (float, 1e-4)}
+
+Mask = {
+    'detector': (str, None),
+}
+
+Experimental_Setup = {
+    'detector': (str, None),
+    'wavelength': (float, None),
+    'detector_distance': (float, None),
+    'beam_x': (float, None),
+    'beam_y': (float, None),
+    'mask': (str, None)}
+
+Hit_Finding_Parameters = {'threshold': (int, 0),
+                          'npixels': (int, 20),
+                          'bragg_search': (parseBoolString, False),
+                          'bragg_threshold': (int, 10),
+                          'roi': (str, None)}
+
+General = {'experiment': (str, 'SSX'),
+           'cpus': (int, 4),
+           'parallelism': (str, 'multiprocessing'),
+           'background_subtraction': (str, None),
+           'randomizer': (int, 0),
+           'live': (parseBoolString, False)}
+
+IO_SSX = {
+    'output_formats': (str, 'hdf5'),
+    'file_extension': (str, None),
+    'filename_root': (str, None),
+    'data': (str, None),
+    'output_directory': (str, '.'),
+    'dark': (str, 'none')}
+
+IO_SFX_SACLA = {'data': (str, None),
+                'runs': (str, None),
+                'calculte_dark': (parseBoolString, False),
+                'dark_run': (int, None),
+                'dark_file': (str, None),
+                'output_directory': (str, None)}
+
+IO_SFX_LCLS = {
+            'experiment': (str, None),
+            'run': (str, None),
+            'calculte_dark': (bool, False),
+            'dark_run': (int, None),
+            'dark_file': (str, None),
+            'output_directory': (str, None)}
+
+try:
+    dict.iteritems
+except AttributeError:
+    # Python 3
+    def itervalues(d):
+        return iter(d.values())
+    def iteritems(d):
+        return iter(d.items())
+else:
+    # Python 2
+    def itervalues(d):
+        return d.itervalues()
+    def iteritems(d):
+        return d.iteritems()
+
+class NpcGenericParser(ConfigParser.RawConfigParser):
+
+    # mapping of configuration file sections with global dictionaries
+    mapping = {'General': General,
+               'Input-Output': None,
+               'Hit-Finding': Hit_Finding_Parameters,
+               'Experimental-Setup': Experimental_Setup
+               }  # 'CrystFEL': CrystFEL}
+
+    def __init__(self, filename):
+        self.filename = filename
+        ConfigParser.RawConfigParser.__init__(self)
+        self.read(self.filename)
+
+        self.get_experiment()
+
+        for section, dic in iteritems(self.mapping):
+            self.parse_section(section, dic)
+
+        for option in ['experiment', 'parallelism', 'background_subtraction']:
+            self.get_selection('General', option, True)
+        self.get_selection('Input-Output', 'output_formats', False)
+
+        # Expand all directories to absolute path
+        self.get_path('Input-Output', 'data')
+        self.get_path('Input-Output', 'output_directory')
+
+    def get_path(self, dic, option):
+        try:
+            path = self.get(dic, option)
+        except:
+            return
+        path = os.path.expanduser(path)  # "~toto" -> "/home/toto" "C:\User\toto"
+        path = os.path.expandvars(path)  # "/xxx/$MACHIN/yyy" -> "/xxx/valeur_machin/yyy"
+        path = os.path.realpath(path)    # "/x/y/../z" -> "/x/z"
+        self.mapping[dic][option] = path
+
+    def get_selection(self, dic,option, unique=False):
+        opt = self.get(dic,option)
+        new_option = get_param(opt)
+        if unique and len(new_option) > 1:
+            raise ValueError("Error. Unique selection only for option '{}'  (Your choice: {})".format(option,opt))
+
+        else:
+            self.mapping[dic][option] = ' '.join(new_option)
+
+    def get_experiment(self):
+        """
+        Will determine which experiment
+
+        """
+        experiment_option = self.get('General', 'experiment')
+        experiment = ' '.join(get_param(experiment_option))
+        try:
+            self.mapping['Input-Output'] = globals()['IO_{}'.format(experiment)]
+        except KeyError:
+            print('Error. Please select only one type of experiment between SSX, SFX_SACLA and SFX_LCLS')
+
+    def parse_section(self, section, dic):
+        """
+        extract all options from a section in the configuration file
+        and store them in the appropriate dictionary.
+        If an exception is raised regarding the value, a default value is set.
+        :param section: section of the configuration file parsed
+        :param dic: global dictionary to be modified
+        """
+        options = self.options(section)
+        for option in options:
+            try:
+                built_in, default = dic[option]
+                try:
+                    dic[option] = built_in(self.get(section, option))
+                except ValueError:
+                    print("Exception on {0}! - Default value instead: {1}".format(option, default))
+                    dic[option] = default
+            except KeyError: print("Error in section {}. Option {} not recognized".format(section, option))
+
+
+def get_param(s):
+    """
+    Takes a string in which the star (*) char is used to select an option
+    Return all options selected by a star(*) in a sequence
+    :param s: string
+    :return: sequence
+    """
+    params = [sub.strip('*') for sub in s.split() if '*' in sub]
+    return params
+
+
+if __name__ == '__main__':
+
+    if len(sys.argv) not in [2,3]:
+        print('Usage: npc config-file')
+    else:
+        options = {}
+        config_file = sys.argv[1]
+        try:
+            hitFile = sys.argv[2]
+            if os.path.isfile(hitFile):
+                options['HitFile'] = utils.parseHits(hitFile)
+            else: print("Sorry: NPC hit file not found (%s)"%hitFile)
+        except IndexError:
+            options['HitFile'] = None
+            pass
+        if os.path.isfile(config_file):
+            options['config_file'] = config_file
+            npc_parser = NpcGenericParser(config_file)
+            for key in npc_parser.mapping:
+                options.update(npc_parser.mapping[key])
+            options['num'] = utils.get_result_folder_number(options)
+            utils.create_results_folders(options)
+            shutil.copyfile(config_file,os.path.join(options['output_directory'], 'NPC_run%s'%options['num'].zfill(3), os.path.basename(config_file)))
+            if options['parallelism'] == 'MPI':
+                from NPC.PreProcessing import DataProcessingMPI as DataProc
+            else:
+                from NPC.PreProcessing import DataProcessingMultiprocessing as DataProc
+            Process = DataProc(options)
+            Process.run()
+        else:
+            print("Sorry: NPC configuration file not found (%s)"%config_file)

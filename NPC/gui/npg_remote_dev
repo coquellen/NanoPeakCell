@@ -1,0 +1,233 @@
+#!/usr/bin/env python
+import ctypes
+import pkg_resources as pkg
+from PyQt4 import QtCore, QtGui
+import NPC
+from npg_qt4_remote_ui import Ui_MainWindow
+from NPC.gui.npg_int_ui import Ui_Intensities
+from NPC.gui.ROIViewBow import CustomViewBox
+import pyqtgraph.widgets.RemoteGraphicsView
+from NPC.gui.Frame import ImageFactory
+import NPC.gui.Headers as Headers
+from NPC.gui.geom import parse_geom_file, reconstruct
+import NPC.gui.peakfind as pf
+from NPC import PreProcessing
+import multiprocessing
+from multiprocessing import Array
+import pyqtgraph as pg
+import numpy as np
+import pyFAI
+import os
+import sys
+from time import time, sleep
+import importlib
+from NPC.Azimuthal_Integrator import AI
+import pyFAI
+import NPC.utils as utils
+from NPC.MultiProcess import MProcess, FileSentinel, DisplayResults
+import pyqtgraph.multiprocess as mp
+class Signals(QtCore.QObject):
+    HitSignal = QtCore.pyqtSignal(np.ndarray)
+
+
+color_mapping = {'Hot'   : 'w',
+                 'Gray'  : 'r',
+                 'Gray_r': 'k',
+                 'Jet'   : 'w',
+                 'Reds_r': 'w',
+                 'YGB_r': 'w',
+                 'Reds'  : 'k',
+                 'Blues' : 'k',
+                 'Blues_r': 'w',
+                 'Spectral' : 'k',
+                 'Spectral_r': 'k'
+                 }
+
+import fabio
+
+def get_class(module_name,class_name):
+    m = importlib.import_module(module_name)
+    # get the class, will raise AttributeError if class cannot be found
+    c = getattr(m, class_name)
+    return c
+
+class ShowNumbers(QtGui.QWidget):
+    def __init__(self):
+        QtGui.QWidget.__init__(self)
+        self.ui = Ui_Intensities()
+        self.ui.setupUi(self)
+
+class NPG(QtGui.QMainWindow):
+
+    options_SSX = {
+        'detector': 'Pilatus6M',
+        'experiment': 'SSX',
+        'detector_distance': 100,
+        'beam_x': 502,
+        'beam_y': 515,
+        'wavelength': 0.832,
+        'output_directory': '.',
+        'num': '1',
+        'output_formats': '',
+        'data': '/Users/coquelleni/PycharmProjects/tmp',
+        'filename_root': 'b3rod',
+        'file_extension': '.cbf',
+        'randomizer': 0,
+        'cpus': 8,
+        'threshold': 40,
+        'npixels': 3,
+        'background_subtraction': 'None',
+        'bragg_search': True,
+        'bragg_threshold': 200,
+        'mask': 'None',
+        'dark': 'none',
+        'live': False,
+        'roi': 'None',
+        # 'roi':  '1257 1231 2527 2463',
+        'distance': 123,
+        'wavelength': 1.23,
+        'beam_y': 800,
+        'beam_x': 1200
+    }
+
+    def __init__(self, app,parent=None):
+        QtGui.QWidget.__init__(self, parent)
+        self.app = app
+        self.ui = Ui_MainWindow()
+        self.ui.setupUi(self)
+        self.popup_int = ShowNumbers()
+        self.data = None
+        self.cursorx = None
+        self.cursory = None
+        self.geom = None
+        self.imgfact = ImageFactory(self.ui.treeWidget, self)
+        self.hitSignal = Signals()
+        self.binning = 4
+        # Bragg Spot Parameters
+        self.MaxBraggs = 2000
+        self.MaxOverThreshold = 10000
+        self.max_t = 0
+        self.filename_cache = None
+
+        self.root = os.path.dirname(os.path.abspath(NPC.__file__))
+        #self.ROI = None
+
+        self.ShowBC = False
+        self.ShowRings = False
+        self.rings = []
+
+        #Pyqtgraph
+        self.v = CustomViewBox(parent = self)
+        #proc = mp.QtProcess()
+        #rpg = proc._import('pyqtgraph')
+        #self.view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
+        #self.ui.graphicsView.addItem(self.view)
+        #self.ui.graphicsView
+        self.proc = self.ui.graphicsView._proc
+        self.vbox = self.proc._import('NPC.gui.ROIViewBow')
+        #self.view = self.vbox.CustomViewBox(parent=self.ui.graphicsView.)
+        #self.PlotItem = self.ui.graphicsView.pg.PlotItem()
+        #self.PlotItem._setProxyOptions(deferGetattr=True)
+        #self.PlotItem.setDownsampling(ds=2,auto=False,mode='peak')
+        #self.PlotItem.setClipToView(True)
+        self.img = self.ui.graphicsView.pg.ImageItem()
+
+        self.ui.graphicsView.setCentralItem(self.img)
+        self.view = self.img.getViewBox()
+        #for ax in ['left', 'top', 'bottom', 'right']:
+        #    self.PlotItem.hideAxis(ax)
+        self.view.setAspectLocked(True)
+        #self.PlotItem.addItem(self.img)
+        self.data = fabio.open('/Users/coquelleni/PycharmProjects/tmp/b3rod_w1_3_0001.cbf').data
+        self.new_shape = self.data.shape[0] // self.binning, self.data.shape[1] // self.binning
+
+        self.img.setTitle("<span style='font-size: 12pt'>x      -- <span style='color: red'>y     </span>"+ '&nbsp;'*15 + "<span style='color: red'>Res:</span>" )
+        #self.data = self.rebin(self.data[0:self.new_shape[0] * self.binning, 0:self.new_shape[1] * self.binning], 2, 2)
+
+        self.img.setImage(self.data,  _callSync='off', levels=(0,10))
+        #self.proxy = self.ui.graphicsView.pg.SignalProxy(self.view.scene().sigMouseMoved, rateLimit=10, slot=self.mouseMoved)
+        proxy = mp.proxy(self.mouseMoved , callSync='off', autoProxy=True)
+        self.view.scene().sigMouseMoved.connect(proxy)
+        print self.data.shape
+
+    def rebin(self, data, x_rebin_fact, y_rebin_fact, keep_I=True):
+            """
+            Rebin the data and adjust dims
+            @param x_rebin_fact: x binning factor
+            @param y_rebin_fact: y binning factor
+            @param keep_I: shall the signal increase ?
+            @type x_rebin_fact: int
+            @type y_rebin_fact: int
+            @type keep_I: boolean
+            """
+            dataIn = data.astype("float32")
+            shapeIn = data.shape
+            shapeOut = (shapeIn[0] / y_rebin_fact, shapeIn[1] / x_rebin_fact)
+            binsize = y_rebin_fact * x_rebin_fact
+            out = np.zeros(shapeOut, dtype="float32")
+            temp = data.astype("float32")
+            temp.shape = (shapeOut[0], y_rebin_fact, shapeOut[1], x_rebin_fact)
+            out = temp.max(axis=3).max(axis=1)
+            return out.astype(data.dtype)
+        #print self.img.pixelSize()
+        # Bindings - Left Panel - Hit findind section
+        #self.ui.DataPathBut.clicked.connect(lambda: self.getPath(self.ui.DataPath))
+        #self.ui.ResPathBut.clicked.connect(lambda: self.getPath(self.ui.ResultsPath))
+        #self.ui.DarkPathBut.clicked.connect(lambda: self.getFile(self.ui.DarkPath))
+        #self.ui.MaskPathBut.clicked.connect(lambda: self.getFile(self.ui.MaskPath))
+        #self.ui.treeWidget.itemSelectionChanged.connect(self.updateTree)
+        #header = self.ui.treeWidget.setColumnWidth(0,230)
+
+
+    def mouseMoved(self, evt):
+
+        pos = evt  ## using signal proxy turns original arguments into a tuple
+        print self.view.sceneBoundingRect().contains(pos)
+        mousePoint = self.view.mapSceneToView(pos)
+        print int(mousePoint.x()), int(mousePoint.y())
+
+        if self.view.sceneBoundingRect().contains(pos):
+            mousePoint = self.view.mapSceneToView(pos)
+            self.cursorx = int(mousePoint.x())
+            self.cursory = int(mousePoint.y())
+            #try:
+            xmax, ymax = self.data.shape
+            if self.cursorx > 0 and self.cursory > 0 and self.cursorx < xmax and self.cursory < ymax:
+                    #res = self.getResolution(self.cursorx, self.cursory)
+                    res = 0
+                    self.PlotItem.setTitle("<span style='font-size: 12pt'>x %4i -- y %4i" % (
+                    self.cursorx, self.cursory) + '&nbsp;' * 15 + "<span style='color: red'>Res: %s </span>" % res)
+                    # self.PlotItem.hideAxis('top')
+                    # self.PlotItem.showLabel('top')
+            #except AttributeError:
+            #    self.PlotItem.setTitle(
+            #        "<span style='font-size: 12pt'>x      -- y     </span>" + '&nbsp;' * 15 + "<span style='color: red'>Res:</span>")
+
+
+if __name__ == "__main__":
+    app = QtGui.QApplication(sys.argv)
+    start = time()
+
+    fn = pkg.resource_filename('NPC','bitmaps/NPC.png')
+    #root = os.path.dirname(os.path.abspath(NPC.__file__))
+    #splash_pix = QtGui.QPixmap(fn)
+    #splash = QtGui.QSplashScreen(splash_pix)#, QtCore.Qt.WindowStaysOnTopHint)
+    #splash.setMask(splash_pix.mask())
+    #splash.show()
+
+    #while time() - start < 2:
+    #    sleep(0.1)
+    #    app.processEvents()
+
+    myapp = NPG(app)
+    #splash.finish(myapp)
+
+    myapp.show()
+
+    sys.exit(app.exec_())
+
+    def mouseDragEvent(self, ev):
+        if ev.button() == QtCore.Qt.MidButton:
+            ev.ignore()
+        else:
+            pg.ViewBox.mouseDragEvent(self, ev)

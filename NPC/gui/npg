@@ -1,0 +1,684 @@
+#!/usr/bin/env python
+
+import pkg_resources as pkg
+from PyQt4 import QtCore, QtGui
+from NPC.gui.npg_qt4_ui import Ui_MainWindow
+from NPC.gui.npg_int_ui import Ui_Intensities
+from NPC.gui.ROIViewBow import CustomViewBox
+
+from NPC.gui.Frame import ImageFactory
+import NPC.gui.Headers as Headers
+from NPC.gui.geom import parse_geom_file, reconstruct
+import NPC.gui.peakfind as pf
+import NPC
+
+import pyqtgraph as pg
+import numpy as np
+import pyFAI
+import os
+import sys
+from time import time, sleep
+import importlib
+
+color_mapping = {'Hot'   : 'w',
+                 'Gray'  : 'r',
+                 'Gray_r': 'k',
+                 'Jet'   : 'w',
+                 'Reds_r': 'w',
+                 'YGB_r': 'w',
+                 'Reds'  : 'k',
+                 'Blues' : 'k',
+                 'Blues_r': 'w',
+                 'Spectral' : 'k',
+                 'Spectral_r': 'k'
+                 }
+
+
+def get_class(module_name,class_name):
+    m = importlib.import_module(module_name)
+    c = getattr(m, class_name)
+    return c
+
+
+class ShowNumbers(QtGui.QWidget):
+    def __init__(self):
+        QtGui.QWidget.__init__(self)
+        self.ui = Ui_Intensities()
+        self.ui.setupUi(self)
+
+
+class NPG(QtGui.QMainWindow):
+
+    def __init__(self, app,parent=None):
+        QtGui.QWidget.__init__(self, parent)
+        self.app = app
+        self.ui = Ui_MainWindow()
+        self.ui.setupUi(self)
+        self.popup_int = ShowNumbers()
+        self.data = None
+        self.cursorx = None
+        self.cursory = None
+        self.geom = None
+        self.imgfact = ImageFactory(self.ui.treeWidget, self)
+
+        # Bragg Spot Parameters
+        self.MaxBraggs = 2000
+        self.MaxOverThreshold = 10000
+        self.max_t = 0
+        self.filename_cache = None
+
+        self.root = os.path.dirname(os.path.abspath(NPC.__file__))
+        self.cwd = os.getcwd()
+        self.ShowBC = False
+        self.ShowRings = False
+        self.rings = []
+
+        #Pyqtgraph
+        self.view = CustomViewBox(parent = self)
+        self.PlotItem = pg.PlotItem(viewBox=self.view)
+        self.PlotItem.setDownsampling(ds=2,auto=False,mode='peak')
+        self.PlotItem.setClipToView(True)
+        for ax in ['left', 'top', 'bottom', 'right']:
+            self.PlotItem.hideAxis(ax)
+        self.ui.graphicsView.addItem(self.PlotItem)
+        self.view.setAspectLocked(True)
+        self.img = pg.ImageItem(border='w')
+        self.PlotItem.addItem(self.img)
+        self.PlotItem.setTitle("<span style='font-size: 12pt'>x      -- <span style='color: red'>y     </span>"+ '&nbsp;'*15 + "<span style='color: red'>Res:</span>" )
+
+        # Bindings - Left Panel - Hit findind section
+        self.ui.DataPathBut.clicked.connect(lambda: self.getPath(self.ui.DataPath))
+        self.ui.ResPathBut.clicked.connect(lambda: self.getPath(self.ui.ResultsPath))
+        self.ui.DarkPathBut.clicked.connect(lambda: self.getFile(self.ui.DarkPath))
+        self.ui.MaskPathBut.clicked.connect(lambda: self.getFile(self.ui.MaskPath))
+        self.ui.treeWidget.itemSelectionChanged.connect(self.updateTree)
+
+        # Bindings - Left Panel - Hit findind section
+        self.ui.beamX.editingFinished.connect(self.setBeamX)
+        self.ui.beamY.editingFinished.connect(self.setBeamY)
+        self.ui.distance.editingFinished.connect(self.setDistance)
+        self.ui.Wavelength.editingFinished.connect(self.setWavelength)
+        self.ui.Detector.currentIndexChanged.connect(self.SetDetector)
+        self.ui.FindBraggsButton.clicked.connect(lambda: self.find_braggs(self.ui.BraggThreshold))
+        self.ui.FindBraggsButton.setShortcut('Ctrl+F')
+
+        # Bindings - Right Panel - Viewer Options
+        self.ui.LoadResultsBut.clicked.connect(self.imgfact.getImages)
+        self.ui.Max.editingFinished.connect(self.updateMax)
+        self.ui.Min.editingFinished.connect(self.updateMin)
+        self.ui.Boost.editingFinished.connect(self.updateBoost)
+        self.ui.ColorMap.currentIndexChanged.connect(self.updateCmap)
+
+        # Bindings - ViewBox
+        self.proxy = pg.SignalProxy(self.view.scene().sigMouseMoved, rateLimit=10, slot=self.mouseMoved)
+        self.view.scene().sigMouseClicked.connect(self.getIntensities)
+
+        #Bindings - Menu
+        self.ui.actionLoad_Geometry.triggered.connect(self.loadGeom)
+        self.ui.actionLoad_Geometry.setShortcut('Ctrl+G')
+        self.ui.actionLoad_Images.triggered.connect(self.imgfact.getImages)
+        self.ui.actionLoad_Images.setShortcut('Ctrl+O')
+        self.ui.actionClose.triggered.connect(QtGui.QApplication.quit)
+        self.ui.actionClose.setShortcut('Ctrl+Q')
+        self.ui.actionShow_Beam_Center.triggered.connect(self.updateBC)
+        self.ui.actionShow_Beam_Center.setShortcut('Ctrl+C')
+        self.ui.actionShow_resolution_rings.triggered.connect(self.updateRings)
+        self.ui.actionShow_resolution_rings.setShortcut('Ctrl+R')
+        self.ui.actionShow_Bragg_Peaks.triggered.connect(self.updateBraggs)
+        self.ui.actionShow_Bragg_Peaks.setShortcut('Ctrl+B')
+
+        self.connect(self.ui.treeWidget, QtCore.SIGNAL("dropped"), self.FileDropped)
+        # Live Play
+        self.item = None
+        self.ui.PlayButton.clicked.connect(self.play)
+        self.ui.StopButton.clicked.connect(self.stop)
+        self.playtimer = QtCore.QTimer()
+        self.playtimer.timeout.connect(self.updateData)
+
+        # class attributes that one might need at some points
+        # These attributes can be set via the reading of .npgrc or via a npc config file
+        # Experiments attributes
+        self.fileroot = None
+        self.filext = None
+        self.lcls_experiment = None
+        self.run = None
+        self.experiment = None
+
+        # General params
+        self.datapath = None
+        self.resultspath = None
+        self.darkpath = None
+        self.maskpath = None
+        self.cpus = None
+        self.outformats = {'hdf5': False, 'cctbx': False, 'cbf': False}
+
+        self.header = None
+        # HitFinder attributes
+        self.threshold = None
+        self.npixels = None
+        self.findbragg = None
+        self.braggthreshold = None
+        # Experimental attributes
+        self.detector = None
+        self.wl = None
+        self.distance = None
+        self.bx = None
+        self.by = None
+
+        # Qt filled circle as beam center
+        self.beam = None # 2D Circle
+        self.boost = 1
+        self.vmin = 0
+        self.vmax = 10
+        self.rootdir = os.getcwd()
+
+        self.bs = []
+        self.rings = []
+        self.ring_text = []
+        idx = self.ui.ColorMap.findText("Gray")
+        self.ui.ColorMap.setCurrentIndex(idx)
+        self.color = color_mapping[str(self.ui.ColorMap.currentText())]
+        self.peaks = None
+        self.ShowBraggs = False
+
+        if len(sys.argv) == 2:
+            self.imgfact.append_file(sys.argv[1])
+
+    def growTree(self):
+        pass
+
+    def FileDropped(self, l):
+        for url in l:
+            if os.path.exists(url):
+                self.imgfact.append_object(url)
+
+    def updateBraggs(self):
+        if self.ShowBraggs:
+            self.ShowBraggs = False
+            self.ui.actionShow_Bragg_Peaks.setText("Show Bragg Peaks")
+            self.clean_peaks()
+        else:
+            self.ShowBraggs = True
+            self.ui.actionShow_Bragg_Peaks.setText("Hide Bragg Peaks")
+            if self.peaks is not None: self.display_peaks(self.peaks)
+
+    def updateBC(self):
+        if self.ShowBC:
+            self.ShowBC = False
+            self.ui.actionShow_Beam_Center.setText("Show Beam Center")
+            #self.view.removeItem(self.beam)
+            self.beam.hide()
+        else:
+            self.showBeamCenter()
+
+    def updateRings(self):
+        if self.ShowRings:
+            self.ShowRings = False
+            self.ui.actionShow_resolution_rings.setText("Show Resolution Rings")
+            for ring in self.rings: self.view.removeItem(ring)
+        else:
+            self.showResolutionRings()
+
+
+    def showBeamCenter(self):
+        if self.bx is not None and self.by is not None:
+            self.ShowBC = True
+            self.ui.actionShow_Beam_Center.setText("Hide Beam Center")
+            if self.beam is not None:
+                self.view.removeItem(self.beam)
+
+            self.beam = pg.QtGui.QGraphicsEllipseItem(float(self.bx)-20, float(self.by)-20, 40, 40)
+            self.beam.setBrush(pg.mkBrush(self.color))
+            self.view.addItem(self.beam)
+
+    def showResolutionRings(self):
+        if all(x is not None for x in [self.bx, self.by, self.distance, self.wl, self.psx, self.psy]):
+            self.ShowRings = True
+            self.ui.actionShow_resolution_rings.setText("Hide Resolution Rings")
+            if self.rings:
+                for item in self.rings:self.view.removeItem(item)
+                self.rings = []
+
+            max_radius = min(min(self.data.shape) - self.bx, min(self.data.shape) - self.by)
+            increment = max_radius / 4
+            for i in range(4):
+                radius =increment * (i + 1)
+                x = float(self.bx)- radius
+                y = float(self.by)- radius
+                ring = pg.QtGui.QGraphicsEllipseItem(x, y, radius * 2, radius * 2)
+                self.rings.append(ring)
+                ring.setPen(pg.mkPen(self.color, width=2, style=QtCore.Qt.SolidLine))
+                self.view.addItem(ring)
+                resolution = "%4.1f A"%float(self.getResolution(self.bx,self.by-radius))
+                ring_text = pg.TextItem(resolution, anchor=(0.5,0), color=self.color)
+                ring_text.setPos(x+radius,y)
+                self.ring_text.append(resolution)
+                self.rings.append(ring_text)
+                self.view.addItem(ring_text)
+
+        else:
+            self.ui.Log.appendPlainText("Please make sure that beam center, wavelength, distance and detector are properly provided.")
+            return
+
+    # Play - Stop Files
+    def play(self):
+        self.idx = 0
+        #self.PlotItem.setDownsampling(ds=4,mode='peak')
+        self.item = self.ui.treeWidget.currentItem()
+        self.playtimer.start()
+
+    def updateData(self):
+
+
+        #self.stop()
+        item = self.ui.treeWidget.itemBelow(self.item)
+
+        if item is not None:
+            self.item = item
+            if self.idx % 20 == 0: self.ui.treeWidget.setCurrentItem(item)
+            self.updateview()
+            self.idx += 1
+        else: self.stop()
+
+    def stop(self):
+        self.playtimer.stop()
+
+    def updateMax(self):
+        try:
+            self.vmax = int(self.ui.Max.text())
+            self.img.setLevels((self.vmin, self.vmax))
+        except ValueError:
+            print('Integer expected for the maximum cmap value... Try Again.')
+
+
+    def updateMin(self):
+        try:
+            self.vmin = int(self.ui.Min.text())
+            self.img.setLevels((self.vmin, self.vmax))
+        except ValueError:
+            print('Integer expected for the minimum cmap value... Try Again.')
+
+
+    def updateBoost(self):
+        try:
+            self.boost = int(self.ui.Boost.text())
+            self.img.setImage(self.data**self.boost)
+            self.img.setLevels((self.vmin,self.vmax))
+        except ValueError:
+            print('Integer expected for the boost value... Try Again.')
+
+    def updateCmap(self):
+        cmap = self.ui.ColorMap.currentText()
+        self.cmap = np.load(pkg.resource_filename('NPC','gui/cmaps/%s.npy'%cmap))
+        self.img.setLookupTable(self.cmap)
+        self.color = color_mapping[str(self.ui.ColorMap.currentText())]
+        if self.beam is not None: self.beam.setBrush(pg.mkBrush(self.color))
+        if self.bs:
+            for b in self.bs:
+                b.setPen(pg.mkPen(self.color, width=2, style=QtCore.Qt.SolidLine))
+
+        if self.rings:
+            i = 0
+            for ring in self.rings:
+                try:
+                    ring.setPen(pg.mkPen(self.color, width=2, style=QtCore.Qt.SolidLine))
+                except AttributeError:
+                    txt = self.ring_text[i]
+                    i += 1#txt = ring.toPlainText()
+                    ring.setText(txt, self.color)
+                    #ring.setDefaultTextColor(self.color)
+
+    def SetDetector(self):
+        det = self.ui.Detector.currentText()
+        sdet = str(det)
+        try:
+            self.detector = pyFAI.detectors.Detector.factory(str(det))
+        except:
+            self.detector = get_class("NPC.Detectors", str(det))()
+        self.psx = self.detector.pixel1
+        self.psy = self.detector.pixel2
+        print("Detector updated to %s" %str(det))
+
+    # Mouse interaction with the viewbox
+    def getIntensities(self, ev):
+        if ev.button() == QtCore.Qt.MidButton and self.view.sceneBoundingRect().contains(ev.pos()):
+            x = self.cursorx
+            y = self.cursory
+            try:
+                xmax , ymax = self.data.shape
+                if self.cursorx > 0 and self.cursory > 0 and self.cursorx < xmax and self.cursory < ymax:
+                    data = self.data[x-10:x+9,y-10:y+9].T
+                    s= ''
+                    for i in range(0,19):
+                        s = s + '\n' + ''.join(['%6i' % member for member in data[-(i+1),:]])
+                    self.popup_int.ui.textEdit.setText("%s"%s)
+                    if not self.popup_int.isVisible(): self.popup_int.show()
+                    self.popup_int.setWindowState(self.popup_int.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
+                    # this will activate the window
+                    self.popup_int.activateWindow()
+            except AttributeError: print('No data loaded yet')
+
+    def mouseMoved(self, evt):
+        pos = evt[0]  ## using signal proxy turns original arguments into a tuple
+        if self.view.sceneBoundingRect().contains(pos):
+            mousePoint = self.view.mapSceneToView(pos)
+            self.cursorx = int(mousePoint.x())
+            self.cursory = int(mousePoint.y())
+            try:
+                xmax, ymax = self.data.shape
+                if self.cursorx > 0 and self.cursory > 0 and self.cursorx < xmax and self.cursory < ymax:
+                    res = self.getResolution(self.cursorx, self.cursory)
+                    self.PlotItem.setTitle("<span style='font-size: 12pt'>x %4i -- y %4i" %(self.cursorx, self.cursory) + '&nbsp;'*15 + "<span style='color: red'>Res: %s </span>"%res)
+                    # self.PlotItem.hideAxis('top')
+                    # self.PlotItem.showLabel('top')
+            except AttributeError:
+                self.PlotItem.setTitle("<span style='font-size: 12pt'>x      -- y     </span>"+ '&nbsp;'*15 + "<span style='color: red'>Res:</span>" )
+
+    def updateTree(self):
+        self.item = self.ui.treeWidget.currentItem()
+        N = str(self.item.text(1))
+        if N == 'tba':
+            self.imgfact.construct_tree_h5(str(self.item.text(0)), self.item)
+            if str(self.item.text(1)) == '1': self.updateview()
+        elif int(self.item.childCount()) != 0 :
+
+            return
+        else: self.updateview()
+
+    def updateview(self):
+        if self.item == None:
+            self.item = self.ui.treeWidget.currentItem()
+        if str(self.item.text(0)) in self.imgfact.filenames_dic.keys():
+            fn = self.imgfact.filenames_dic[str(self.item.text(0))]
+            if os.path.exists(fn):
+                try :
+                    header, self.data = self.imgfact.openframe(fn)
+                except TypeError: return
+        else:
+            try:
+                path, index = str(self.item.text(0)).split()
+                parent= self.item.parent()
+                fn = self.imgfact.filenames_dic[str(parent.text(0))]
+                if not os.path.isfile(fn):
+                    parent2 = parent.parent()
+                    fn = self.imgfact.filenames_dic[str(parent2.text(0))]#path = str(parent.text(0))
+                header, self.data =self.imgfact.openframe(str(fn), path=path, index=int(index))
+            except ValueError: return
+             
+        if self.geom is not None:
+            self.data = reconstruct(self.data,self.geom)
+        if header is not None and header != self.header:
+            self.header = header
+            xp_settings = Headers.readheader(header, str(fn))
+            self.set_xpsetup(xp_settings)
+        if self.data is not None:
+            self.display_pattern()
+            self.clean_peaks()
+            self.peaks = None
+
+    def display_pattern(self):
+        self.img.setImage(self.data.astype(np.float32)**self.boost,levels=(self.vmin,self.vmax))
+
+    # ----------------------------------------------------------------------
+    def display_peaks(self, peaks, color='b', radius=5, thickness=0):
+        for peak in peaks:
+            x, y = peak[1], peak[0]
+            brag = pg.QtGui.QGraphicsEllipseItem(x-radius, y-radius, radius * 2, radius * 2)
+            brag.setPen(pg.mkPen(self.color, width=2, style=QtCore.Qt.SolidLine))
+            self.bs.append(brag)
+            self.view.addItem(brag)
+
+    # ----------------------------------------------------------------------
+    def clean_peaks(self):
+        """ Remove any circle around Bragg peaks
+        """
+        for bs in self.bs:
+            self.view.removeItem(bs)
+        self.bs = []
+
+
+
+    # ----------------------------------------------------------------------
+    def find_braggs(self, threshold_obj):
+        """ Find Position of Bragg peaks in the img
+	    and display it on screen  Should use the Braggs module"""
+        try:
+            threshold = float(threshold_obj.text())
+        except ValueError:
+            self.ui.Log.appendPlainText("Bad input - Please check the value of Bragg Threshold parameter -")
+            return
+
+        if self.data is not None:
+            data = self.data.astype(np.int32)
+            N = np.count_nonzero(data > threshold)
+            if N > self.MaxOverThreshold:
+                self.ui.Log.appendPlainText("Bragg search aborted... A threshold value of %i does not seem appropriate for this pattern."%threshold)
+                if self.filename_cache != self.imgfact.filename:
+                    self.max_t = np.sort(data, axis=None)[-self.MaxBraggs]
+                    self.filename_cache = self.imgfact.filename
+                self.ui.Log.appendPlainText("Bragg search will be allowed for threshold values equal to or above %i for this pattern."%self.max_t)
+                return
+            self.peaks = pf.local_maxima(data, 3, 3, threshold)
+            self.clean_peaks()
+            num_braggs = len(self.peaks)
+
+            if num_braggs > self.MaxBraggs:
+                self.ui.Log.appendPlainText("Too many Bragg peaks have been found to be displayed (%i). Please consider adjusting your threshold.\n"%len(self.peaks))
+            else:
+                self.ui.Log.appendPlainText(
+                    "Found %4i Bragg peaks in file %s (threshold of %i)" % (num_braggs, self.imgfact.filename, threshold))
+                self.display_peaks(self.peaks)
+                self.ShowBraggs = True
+                self.ui.actionShow_Bragg_Peaks.setText("Hide Bragg Peaks")
+
+
+    def set_xpsetup(self, xp_settings):
+        try:
+            distance, psx, psy, wl, by, bx, detector_name = xp_settings
+        except:
+            return
+        if self.bx != bx or self.by != by:
+            self.bx = float(bx)
+            self.by = float(by)
+        if self.distance != distance:
+            self.distance = float(distance)
+        if self.wl != wl:
+            self.wl = float(wl)
+            self.detector = pyFAI.detectors.Detector.factory(detector_name)
+            self.psx = self.detector.pixel1
+            self.psy = self.detector.pixel2
+            if self.ShowBC:
+                self.showBeamCenter()
+            if self.ShowRings:
+                self.showResolutionRings()
+            self.ui.distance.setText(distance.strip())
+            self.ui.Wavelength.setText(wl.strip())
+            self.ui.beamX.setText(bx.strip())
+            self.ui.beamY.setText(by.strip())
+            index = self.ui.Detector.findText(detector_name)
+            self.ui.Detector.setCurrentIndex(index)
+
+    def getResolution(self, x, y):
+        try:
+            dx = x - self.bx
+            dy = y - self.by
+            dx *=  self.psx
+            dy *=  self.psy
+            radius = np.sqrt(dx ** 2 + dy ** 2)
+            theta = 0.5 * np.arctan((radius) / (self.distance / 1000))
+            return '%4.2f ' %(self.wl / (2. * np.sin(theta)))
+        except:
+            return 'nan'
+
+    def loadGeom(self):
+        path = QtGui.QFileDialog.getOpenFileName(
+                       self,
+                       "Select a CrystFEL geometry file",
+                       '/Users/nico/PycharmProjects/npg_qt')
+        if path:
+            filename = str(path)
+            if os.path.exists(filename):
+                self.geom = parse_geom_file(filename)
+                if self.data is not None:
+                    self.data = reconstruct(self.data, self.geom)
+                    self.display_pattern()
+
+    def getDataPath(self):
+        return self.ui.DataPath.text()
+
+    def getResultsPath(self):
+        return self.ui.ResultsPath.text()
+
+    def getDarkPath(self):
+        return self.ui.DarkPath.text()
+
+    def getMaskPath(self):
+        return self.ui.MaskPath.text()
+
+    def getCpus(self):
+        try:
+            return int(self.ui.cpus.text())
+        except ValueError:
+            print('Integer expected for the number of cpus... Try Again.')
+            return None
+
+    def getOutFormats(self):
+        self.outformats['hdf5'] = self.ui.hdf5out.isChecked()
+        self.outformats['cctbx'] = self.ui.cctbxout.isChecked()
+        self.outformats['cbf'] = self.ui.cbfout.isChecked()
+
+    def getPath(self, var):
+        d = QtGui.QFileDialog.getExistingDirectory(
+                       self,
+                       "Open a folder",
+                       self.cwd,
+                       QtGui.QFileDialog.ShowDirsOnly)
+        var.setText(d)
+        self.cwd=d
+
+    def getFile(self, var):
+        d = QtGui.QFileDialog.getOpenFileName(
+            self,
+            "Select a File",
+            self.cwd
+        )
+        var.setText(d[0])
+
+    def getThreshold(self):
+        try:
+            return float(self.ui.Threshold.text())
+        except ValueError:
+            print('Integer expected for the threshold... Try Again.')
+            return None
+
+    def getBraggSearch(self):
+        s = str(self.ui.FindBragg.currentText())
+        return s.strip().lower() == 'true'
+
+    def getBraggThreshold(self):
+        try:
+            return int(self.ui.BraggThreshold.text())
+        except ValueError:
+            print('Integer expected for the bragg threshold... Try Again.')
+            return None
+
+    def getDetectorName(self):
+        return str(self.ui.Detector.currentText())
+
+    def getWavelength(self):
+        try:
+            return float(self.ui.Wavelength.text())
+        except ValueError:
+            print('Float expected for the wavelength... Try Again.')
+            return None
+
+    def setWavelength(self):
+        self.wl = self.getWavelength()
+        if self.ShowRings: self.showResolutionRings()
+        print("Wavelength is now %6.3f Angstrom" %self.wl)
+
+    # @check_float
+    def getDistance(self):
+        try:
+            return float(self.ui.distance.text())
+        except ValueError:
+            print('Float expected for the distance... Try Again.')
+            return None
+
+    def setDistance(self):
+        self.distance = self.getDistance()
+        if self.ShowRings: self.showResolutionRings()
+        print("Distance now is %i mm" %self.distance)
+
+    def getBeam(self):
+        try:
+            bx = float(self.ui.beamX.text())
+            by = float(self.ui.beamY.text())
+            return bx, by
+        except ValueError:
+            print('Numbers expected for the beam center... Try Again.')
+            return None, None
+
+    def getBeamX(self):
+        try:
+            return float(self.ui.beamX.text())
+        except ValueError:
+            print('Numbers expected for the beam center... Try Again.')
+            return None
+
+    def getBeamY(self):
+        try:
+            return float(self.ui.beamY.text())
+        except ValueError:
+            print('Numbers expected for the beam center... Try Again.')
+            return None
+
+    def setBeamX(self):
+        self.bx = self.getBeamX()
+        print("Beam center X is now %6.2f pixels" %self.bx)
+        if self.ShowBC :self.showBeamCenter()
+        if self.ShowRings: self.showResolutionRings()
+
+    def setBeamY(self):
+        self.by = self.getBeamY()
+        print("Beam center Y is now %6.2f pixels" %self.by)
+        if self.ShowBC: self.showBeamCenter()
+        if self.ShowRings: self.showResolutionRings()
+
+    def getThemAll(self):
+        idx = self.ui.ExperimentTabWidget.currentIndex()
+        self.getTabContent(idx)
+        self.getDataPath()
+        self.getResultsPath()
+        self.getDarkPath()
+        self.getMaskPath()
+        self.getOutFormats()
+
+    def setThemAll(self):
+        pass
+
+    def closeEvent(self, QCloseEvent):
+        self.view.Roiwin.close()
+        self.popup_int.close()
+        self.close()
+
+if __name__ == "__main__":
+
+    app = QtGui.QApplication(sys.argv)
+    start = time()
+
+    fn = pkg.resource_filename('NPC','bitmaps/NPC.png')
+
+    splash_pix = QtGui.QPixmap(fn)
+    splash = QtGui.QSplashScreen(splash_pix)
+    splash.setMask(splash_pix.mask())
+    splash.show()
+
+    while time() - start < 2:
+        sleep(0.1)
+        app.processEvents()
+
+    myapp = NPG(app)
+    splash.finish(myapp)
+    myapp.show()
+    sys.exit(app.exec_())
