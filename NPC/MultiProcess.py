@@ -111,7 +111,7 @@ class Signals(QtCore.QObject):
     Job = QtCore.pyqtSignal(list)
 
 
-
+# Not used anymore
 class DisplayResults(multiprocessing.Process):
 
     def __init__(self, nqueue, results_queue,options, log):
@@ -369,7 +369,8 @@ class MProcess(multiprocessing.Process):
         m = self.getCorrection(self.options['mask'])
         if m is None:
             return self.detector.mask[self.xmin:self.xmax,self.ymin:self.ymax].astype(np.int32)
-        return m[self.xmin:self.xmax,self.ymin:self.ymax].astype(np.int32)
+        else:
+            return m[self.xmin:self.xmax,self.ymin:self.ymax].astype(np.int32)
 
     def getCorrection(self, options):
         if options.lower() == 'none':
@@ -449,13 +450,13 @@ class MProcess(multiprocessing.Process):
         # TODO: Use the new Correction class as in the MPI part
         if self.SubtractBkg:
             if self.data.shape == self.detector.shape:
-                print(self.data.mean())
+                #print(self.data.mean())
                 self.data = \
                     self.AzimuthalIntegrator.ai.separate(self.data.astype("float64"), npt_rad=1024, npt_azim=512,
                                                          unit="2th_deg",
                                                          percentile=50, mask=self.mask,
                                                          restore_mask=True)[0][:]
-                print(self.data.mean())
+                #print(self.data.mean())
 
         # Masking Array
         masked = np.ma.array(self.data, mask=self.mask)
@@ -463,7 +464,7 @@ class MProcess(multiprocessing.Process):
         if N > 0: print("WARNING: Found %i overloaded pixels - You might want to check your mask" % N)
 
         # Hit Finding
-        hit = int(masked[masked >= self.options['threshold']].size >= self.options['npixels'])
+        hit = int( np.count_nonzero(masked.compressed() > self.options['threshold']) >= self.options['npixels'])
 
         #Could delay that
         self.result_queue.put((hit, 1, filename))
@@ -622,12 +623,13 @@ class MProcessEiger(MProcess):
                                                          restore_mask=True)[0][:]
 
             #Masking Array
+            
             masked = np.ma.array(self.data, mask=self.mask)
             N=masked[masked > self.ovl].size
             if N > 0: print("WARNING: Found %i overloaded pixels - You might want to check your mask"%N)
 
             #Hit Finding
-            hit = int(masked[masked >= self.options['threshold']].size >= self.options['npixels'])
+            hit = int( np.count_nonzero(masked.compressed() > self.options['threshold']) >= self.options['npixels'])
             self.result_queue.put((hit, 1, '%s //%i'%(filename,i)))
 
             if len(self.options['output_formats'].split()) > 0 and hit > 0:
