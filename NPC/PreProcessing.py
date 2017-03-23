@@ -198,9 +198,11 @@ class DataProcessingMultiprocessing(DataProcessing):
         DataProcessing.__init__(self, options, self.print_function)
 
         OutputFileName = os.path.join(self.options['output_directory'],'NPC_run%s'%self.options['num'].zfill(3),
-                                      '%s_%s.txt' % (self.options['filename_root'], self.options['num'].zfill(3)))
+                                      '%s_%s' % (self.options['filename_root'], self.options['num'].zfill(3)))
 
-        self.outTxt = open(OutputFileName, 'w')
+        self.outTxt = open('%s.txt'%OutputFileName, 'w')
+        self.outTxtRej = open('%s_rejected.txt'%OutputFileName, 'w')
+
         utils.startup(self.options, self.print_function)
 
         self.tasks = multiprocessing.JoinableQueue(maxsize=10000)
@@ -250,7 +252,8 @@ class DataProcessingMultiprocessing(DataProcessing):
                 hit, chunk, fns = self.results.get(block=False, timeout=None)
                 self.hit += hit
                 self.out += chunk
-                if len(fns) > 0: self.outTxt.write(fns+'\n')
+                if hit > 0: self.outTxt.write(fns+'\n')
+                if hit == 0: self.outTxtRej.write(fns+'\n')
                 if self.out % 10*20 == 0:
                     percent = (float(self.out) / (self.total)) * 100.
                     hitrate = (float(self.hit) / float(self.out)) * 100.
@@ -278,6 +281,7 @@ class DataProcessingMultiprocessing(DataProcessing):
                 (self.t2 - self.t1), self.out, self.out / (self.t2 - self.t1))
         self.print_function(finalMessage)
         self.outTxt.close()
+        self.outTxtRej.close()
         self.signals.Stop.emit(True)
 
     def startFS(self):
