@@ -182,7 +182,11 @@ class NPG(QtGui.QMainWindow):
         self.ShowBraggs = False
 
         if len(sys.argv) == 2:
-            self.imgfact.append_file(sys.argv[1])
+            f = sys.argv[1]
+            if os.path.isdir(f):
+                self.imgfact.append_object(sys.argv[1])
+            else:
+                self.imgfact.append_file(f)
 
     def growTree(self):
         pass
@@ -232,6 +236,7 @@ class NPG(QtGui.QMainWindow):
             self.view.addItem(self.beam)
 
     def showResolutionRings(self):
+
         if all(x is not None for x in [self.bx, self.by, self.distance, self.wl, self.psx, self.psy]):
             self.ShowRings = True
             self.ui.actionShow_resolution_rings.setText("Hide Resolution Rings")
@@ -290,14 +295,12 @@ class NPG(QtGui.QMainWindow):
         except ValueError:
             print('Integer expected for the maximum cmap value... Try Again.')
 
-
     def updateMin(self):
         try:
             self.vmin = int(self.ui.Min.text())
             self.img.setLevels((self.vmin, self.vmax))
         except ValueError:
             print('Integer expected for the minimum cmap value... Try Again.')
-
 
     def updateBoost(self):
         try:
@@ -435,8 +438,6 @@ class NPG(QtGui.QMainWindow):
         for bs in self.bs:
             self.view.removeItem(bs)
         self.bs = []
-
-
 
     # ----------------------------------------------------------------------
     def find_braggs(self, threshold_obj):
@@ -673,7 +674,7 @@ if __name__ == "__main__":
     splash = QtGui.QSplashScreen(splash_pix)
     splash.setMask(splash_pix.mask())
     splash.show()
-
+    splash.raise_()
     while time() - start < 2:
         sleep(0.1)
         app.processEvents()
@@ -681,4 +682,5 @@ if __name__ == "__main__":
     myapp = NPG(app)
     splash.finish(myapp)
     myapp.show()
+    myapp.raise_()
     sys.exit(app.exec_())

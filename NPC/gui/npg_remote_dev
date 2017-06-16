@@ -118,6 +118,7 @@ class NPG(QtGui.QMainWindow):
 
         #Pyqtgraph
         self.v = CustomViewBox(parent = self)
+
         #proc = mp.QtProcess()
         #rpg = proc._import('pyqtgraph')
         #self.view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
@@ -125,29 +126,34 @@ class NPG(QtGui.QMainWindow):
         #self.ui.graphicsView
         self.proc = self.ui.graphicsView._proc
         self.vbox = self.proc._import('NPC.gui.ROIViewBow')
-        #self.view = self.vbox.CustomViewBox(parent=self.ui.graphicsView.)
-        #self.PlotItem = self.ui.graphicsView.pg.PlotItem()
-        #self.PlotItem._setProxyOptions(deferGetattr=True)
-        #self.PlotItem.setDownsampling(ds=2,auto=False,mode='peak')
-        #self.PlotItem.setClipToView(True)
+        #print self.vbox
+        self.view = self.vbox.CustomViewBox()
+        self.PlotItem = self.ui.graphicsView.pg.PlotItem()
+        self.PlotItem._setProxyOptions(deferGetattr=True)
+        self.PlotItem.setDownsampling(ds=2,auto=False,mode='peak')
+        self.PlotItem.setClipToView(True)
         self.img = self.ui.graphicsView.pg.ImageItem()
+        self.PlotItem.addItem(self.img)
+        self.PlotItem.setTitle(
+            "<span style='font-size: 12pt'>x      -- <span style='color: red'>y     </span>" + '&nbsp;' * 15 + "<span style='color: red'>Res:</span>")
 
-        self.ui.graphicsView.setCentralItem(self.img)
-        self.view = self.img.getViewBox()
+        #self.ui.graphicsView.setCentralItem(self.img)
+        #self.view = self.img.getViewBox()
+        #print self.view
         #for ax in ['left', 'top', 'bottom', 'right']:
         #    self.PlotItem.hideAxis(ax)
-        self.view.setAspectLocked(True)
+        #self.view.setAspectLocked(True)
         #self.PlotItem.addItem(self.img)
         self.data = fabio.open('/Users/coquelleni/PycharmProjects/tmp/b3rod_w1_3_0001.cbf').data
         self.new_shape = self.data.shape[0] // self.binning, self.data.shape[1] // self.binning
 
-        self.img.setTitle("<span style='font-size: 12pt'>x      -- <span style='color: red'>y     </span>"+ '&nbsp;'*15 + "<span style='color: red'>Res:</span>" )
+        #self.img.setTitle("<span style='font-size: 12pt'>x      -- <span style='color: red'>y     </span>"+ '&nbsp;'*15 + "<span style='color: red'>Res:</span>" )
         #self.data = self.rebin(self.data[0:self.new_shape[0] * self.binning, 0:self.new_shape[1] * self.binning], 2, 2)
 
         self.img.setImage(self.data,  _callSync='off', levels=(0,10))
         #self.proxy = self.ui.graphicsView.pg.SignalProxy(self.view.scene().sigMouseMoved, rateLimit=10, slot=self.mouseMoved)
         proxy = mp.proxy(self.mouseMoved , callSync='off', autoProxy=True)
-        self.view.scene().sigMouseMoved.connect(proxy)
+        #self.view.scene().sigMouseMoved.connect(proxy)
         print self.data.shape
 
     def rebin(self, data, x_rebin_fact, y_rebin_fact, keep_I=True):

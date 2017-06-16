@@ -12,11 +12,11 @@ import pyFAI.detectors
 import numpy as np
 import h5py
 import fabio
-from NPC.Azimuthal_Integrator import AI
-import NPC.utils as utils
-from NPC.MultiProcess import FileSentinel, DisplayResults
+from .Azimuthal_Integrator import AI
+from . import utils
+from .MultiProcess import FileSentinel
 from PyQt4 import QtCore
-from NPC.utils import Log
+from .utils import Log
 
 
 class Signals(QtCore.QObject):
@@ -234,14 +234,13 @@ class DataProcessingMultiprocessing(DataProcessing):
             
             while self.out != self.total or self.out == 0:
                 try:
-                    self.displayStats(i)
-                    i += 1
+                    self.displayStats()
                 except KeyboardInterrupt:
                     print("\n\nCtrl-c received --- Aborting and trying not to compromising results...")
                     break
         self.displayFinalStats()
 
-    def displayStats(self,i):
+    def displayStats(self):
         while True or self.out != self.total:
             try:
                 self.total = self.N_queue.get(block=True, timeout=0.01)
@@ -254,7 +253,7 @@ class DataProcessingMultiprocessing(DataProcessing):
                 self.out += chunk
                 if hit > 0: self.outTxt.write(fns+'\n')
                 if hit == 0: self.outTxtRej.write(fns+'\n')
-                if self.out % 10*20 == 0:
+                if self.out % 10*20 == 0 and self.out > 0:
                     percent = (float(self.out) / (self.total)) * 100.
                     hitrate = (float(self.hit) / float(self.out)) * 100.
                     self.signals.Job.emit([percent, hitrate])

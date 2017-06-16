@@ -186,10 +186,11 @@ class ImageFactory(object):
                     self.construct_tree(s, self.tree)
 
     def append_object(self,obj):
-        print obj
-        obj = os.path.basename(obj)
-        print(obj)
+        #print obj
+        #obj = os.path.basename(obj)
+        #print(obj)
         if os.path.isfile(obj):
+            print('AAhhh0')
             self.append_file(obj)
         elif os.path.isdir(obj):
             print("dir")

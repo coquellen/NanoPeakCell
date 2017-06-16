@@ -2,12 +2,12 @@ from __future__ import print_function
 import multiprocessing
 import fabio
 import h5py
-from NPC.utils import Log, get_filenames
+from .utils import Log, get_filenames
 import time
 import numpy as np
-import random
 import os
-from NPC.Braggs import find_peaks
+from .Braggs import find_peaks
+from NPC_CBF import write
 
 # Carefull 3.5
 try:
@@ -202,8 +202,6 @@ class FileSentinel(multiprocessing.Process):
         self.total_queue = total_queue
         self.tasks = task_queue
         self.options = options
-        #self.detector = detector
-        #self.AzimuthalIntegrator = AzimuthalIntegrator
         self.live = self.options['live']
         self.all = []
         self.total = 0
@@ -218,12 +216,15 @@ class FileSentinel(multiprocessing.Process):
             self.load_queue = self.loadSsxQueue
 
     def loadSsxQueue(self):
+        try:
             self.total += len(self.filenames)
             self.total_queue.put(self.total)
             for fname in self.filenames:
                 self.tasks.put(fname, block=True, timeout=None)
             self.givePoisonPill()
-
+        except KeyboardInterrupt:
+            print("File Sentinel exited properly")
+            return
 
     def loadH5Queue(self):
 
@@ -245,10 +246,13 @@ class FileSentinel(multiprocessing.Process):
                     self.total_queue.put(self.total)
                 except KeyError:
                     continue
+                except KeyboardInterrupt:
+                    print("File Sentinel exited properly")
+                    return
+
                 h5.close()
         else:
             for filename in self.filenames:
-                #for idx in self.options['HitFile'][filename]:
                 task = (filename, self.h5path, self.overload, self.type, self.options['HitFile'][filename])
                 self.tasks.put(task, block=True, timeout=None)
                 self.total += len(self.options['HitFile'][filename])
@@ -410,7 +414,6 @@ class MProcess(multiprocessing.Process):
 
             except KeyboardInterrupt:
                 self.exitProperly()
-                print("Process %s exited properly" % str(self.name))
                 return
         return
 
@@ -450,13 +453,11 @@ class MProcess(multiprocessing.Process):
         # TODO: Use the new Correction class as in the MPI part
         if self.SubtractBkg:
             if self.data.shape == self.detector.shape:
-                #print(self.data.mean())
                 self.data = \
                     self.AzimuthalIntegrator.ai.separate(self.data.astype("float64"), npt_rad=1024, npt_azim=512,
                                                          unit="2th_deg",
                                                          percentile=50, mask=self.mask,
                                                          restore_mask=True)[0][:]
-                #print(self.data.mean())
 
         # Masking Array
         masked = np.ma.array(self.data, mask=self.mask)
@@ -507,21 +508,24 @@ class MProcess(multiprocessing.Process):
             OutputFileName = os.path.join(self.options['output_directory'],
                                           'NPC_run%s' % (self.options['num'].zfill(3)),
                                           dirStr,
-                                          "%s.%s" % (self.root, extStr))
+                                          self.root)
+                                          #"%s.%s" % (self.root, extStr))
 
-            func(OutputFileName)
+            func(OutputFileName,extStr)
 
 
-    def saveEdf(self,OutputFileName):
-        edfout = fabio.edfimage.edfimage(data=self.data2Save.astype(np.float32))
-        edfout.write(OutputFileName)
+    def saveEdf(self,OutputFileName,extStr):
+        edfout = fabio.edfimage.edfimage(data=self.data.astype(np.float32))
+        edfout.write('%s.%s'%(OutputFileName,extStr))
 
-    def saveCbf(self, OutputFileName):
-        cbfout = fabio.cbfimage.cbfimage(data=self.data2Save.astype(np.float32))
-        cbfout.write(OutputFileName)
+    def saveCbf(self, OutputFileName,extStr):
+        #cbfout = fabio.cbfimage.cbfimage(data=self.data.astype(np.float32))
+        #cbfout.write('%s.%s'%(OutputFileName,extStr))
+        write('%s.%s'%(OutputFileName,extStr))
 
-    def savePickle(self, OutputFileName):
-        if cctbx:
+
+    def savePickle(self, OutputFileName,extStr):
+        #if cctbx:
             ovl = self.getOvl()
             pixels = flex.int(self.data2Save.astype(np.int32))
             pixel_size = self.detector.pixel1
@@ -533,9 +537,9 @@ class MProcess(multiprocessing.Process):
                          beam_center_y=self.options['beam_x'] * pixel_size,
                          ccd_image_saturation=ovl,
                          saturated_value=ovl)
-            easy_pickle.dump(OutputFileName, data)
-
-    def saveH5(self, OutputFileName):
+            easy_pickle.dump('%s.%s'%(OutputFileName,extStr), data)
+        #else: print('Ahhhh')
+    def saveH5(self, OutputFileName,extStr):
         if self.Nhits % self.NFramesPerH5 == 0:
             if self.h5out is not None: self.h5out.close()
             OutputFileName = os.path.join(self.options['output_directory'],
@@ -596,7 +600,7 @@ class MProcessEiger(MProcess):
         self.h5out = None
         self.dset = None
         self.data = np.zeros((self.xmax - self.xmin, self.ymax - self.ymin), dtype=self.type)
-
+        self.count = 0
 
     def isHit(self,task):
 
@@ -606,7 +610,6 @@ class MProcessEiger(MProcess):
         if self.options['HitFile'] is not None:
             iterable = [int(x) for x in N]
         else: iterable = range(0,N)
-
         for i in iterable:
             #Dark Correction
             self.data = self.correctData(self.h5[self.group][i,self.xmin:self.xmax,self.ymin:self.ymax].astype(np.int32),
@@ -630,6 +633,7 @@ class MProcessEiger(MProcess):
 
             #Hit Finding
             hit = int( np.count_nonzero(masked.compressed() > self.options['threshold']) >= self.options['npixels'])
+            #print(self.name, hit)
             self.result_queue.put((hit, 1, '%s //%i'%(filename,i)))
 
             if len(self.options['output_formats'].split()) > 0 and hit > 0:
@@ -639,6 +643,7 @@ class MProcessEiger(MProcess):
                                                  (0,self.detector.shape[0],0,self.detector.shape[1]))
 
                 self.saveHit('%s_%i'%(filename,i))
+                self.count += 1
         self.h5.close()
         return
 
@@ -673,8 +678,27 @@ class MProcessEiger(MProcess):
 
 
 
+    def saveEdf(self,OutputFileName,extStr):
+        edfout = fabio.edfimage.edfimage(data=self.data.astype(np.float32))
+        edfout.write('%s_%i.%s'%(OutputFileName,self.count,extStr))
 
+    def saveCbf(self, OutputFileName,extStr):
+        #cbfout = fabio.cbfimage.cbfimage(data=self.data.astype(np.float32))
+        #cbfout.write('%s_%i.%s'%(OutputFileName,self.count,extStr))
+        write('%s_%s.%s'%(OutputFileName,str(self.count).zfill(6),extStr),self.data.astype(np.int32))
 
-
-
-
+    def savePickle(self, OutputFileName,extStr):
+        if cctbx:
+            ovl = self.getOvl()
+            pixels = flex.int(self.data2Save.astype(np.int32))
+            pixel_size = self.detector.pixel1
+            data = dpack(data=pixels,
+                         distance=self.options['distance'],
+                         pixel_size=pixel_size,
+                         wavelength=self.options['wavelength'],
+                         beam_center_x=self.options['beam_y'] * pixel_size,
+                         beam_center_y=self.options['beam_x'] * pixel_size,
+                         ccd_image_saturation=ovl,
+                         saturated_value=ovl)
+            easy_pickle.dump('%s_%i.%s'%(OutputFileName,self.count,extStr), data)
+        #else: print('Ahhhhh')
