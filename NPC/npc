@@ -7,7 +7,7 @@ except ImportError:
     import configparser as ConfigParser
 import os.path
 import sys
-from . import utils
+import NPC.utils as utils
 
 def parseBoolString(s):
     return s.strip().lower() in ('true', 't', 'yes', '1')
