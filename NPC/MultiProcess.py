@@ -372,9 +372,9 @@ class MProcess(multiprocessing.Process):
     def getMask(self):
         m = self.getCorrection(self.options['mask'])
         if m is None:
-            return self.detector.mask[self.xmin:self.xmax,self.ymin:self.ymax].astype(np.int32)
+            return self.detector.mask.astype(np.int32)
         else:
-            return m[self.xmin:self.xmax,self.ymin:self.ymax].astype(np.int32)
+            return m.astype(np.int32)
 
     def getCorrection(self, options):
         if options.lower() == 'none':
@@ -460,7 +460,7 @@ class MProcess(multiprocessing.Process):
                                                          restore_mask=True)[0][:]
 
         # Masking Array
-        masked = np.ma.array(self.data, mask=self.mask)
+        masked = np.ma.array(self.data, mask=self.mask[self.xmin:self.xmax, self.ymin:self.ymax])
         N = masked[masked > self.ovl].size
         if N > 0: print("WARNING: Found %i overloaded pixels - You might want to check your mask" % N)
 
@@ -527,7 +527,7 @@ class MProcess(multiprocessing.Process):
     def savePickle(self, OutputFileName,extStr):
         #if cctbx:
             ovl = self.getOvl()
-            pixels = flex.int(self.data2Save.astype(np.int32))
+            pixels = flex.int(self.data.astype(np.int32))
             pixel_size = self.detector.pixel1
             data = dpack(data=pixels,
                          distance=self.options['distance'],
@@ -569,7 +569,7 @@ class MProcess(multiprocessing.Process):
         self.dset[self.Nhits % self.NFramesPerH5, ::] = self.data[:]
 
         if self.options['bragg_search']:
-            X, Y, I = find_peaks(self.data2Save, self.options['bragg_threshold'])
+            X, Y, I = find_peaks(self.data * -1 * (self.mask - 1), self.options['bragg_threshold'])
             dim2 = X.size
             idx = self.Nhits % self.NFramesPerH5
             self.nPeaks[idx] = dim2
@@ -627,7 +627,7 @@ class MProcessEiger(MProcess):
 
             #Masking Array
             
-            masked = np.ma.array(self.data, mask=self.mask)
+            masked = np.ma.array(self.data, mask=self.mask[self.xmin:self.xmax, self.ymin:self.ymax])
             N=masked[masked > self.ovl].size
             if N > 0: print("WARNING: Found %i overloaded pixels - You might want to check your mask"%N)
 
