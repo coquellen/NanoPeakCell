@@ -570,7 +570,7 @@ class MProcess(multiprocessing.Process):
 
         if self.options['bragg_search']:
             X, Y, I = find_peaks(self.data * -1 * (self.mask - 1), self.options['bragg_threshold'])
-            dim2 = max(X.size,2000)
+            dim2 = min(X.size,2000)
             idx = self.Nhits % self.NFramesPerH5
             self.nPeaks[idx] = dim2
             self.peakXPosRaw[idx, 0:dim2] = X.reshape(1, dim2)
@@ -614,7 +614,7 @@ class MProcessEiger(MProcess):
             #Dark Correction
             if self.options['background_subtraction'].lower() != 'none':
                 # if self.data.shape == self.detector.shape:
-
+                
                 self.data = \
                     self.AzimuthalIntegrator.ai.separate(\
                         self.correctData(self.h5[self.group][i,::].astype(np.int32),
@@ -624,18 +624,18 @@ class MProcessEiger(MProcess):
                         unit="2th_deg",
                         percentile=50,
                         mask=self.mask,
-                        restore_mask=True)[0][:]
+                        restore_mask=True)[0][self.xmin:self.xmax,self.ymin:self.ymax]
 
             else:
                 self.data = self.correctData(self.h5[self.group][i,self.xmin:self.xmax,self.ymin:self.ymax].astype(np.int32),
                                          self.dark,
                                          self.options['ROI_tuple'])
-
+            
             #BKG Sub using mask
 
             #Masking Array
             
-            masked = np.ma.array(self.data[self.xmin:self.xmax,self.ymin:self.ymax],
+            masked = np.ma.array(self.data,
                                  mask=self.mask[self.xmin:self.xmax, self.ymin:self.ymax])
 
             #N=masked[masked > self.ovl].size
