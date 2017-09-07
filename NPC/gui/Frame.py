@@ -234,8 +234,8 @@ class ImageFactory(object):
 
         self.filename = self.filenames_dic[fn]
         with h5py.File(self.filename, 'r') as h5:
-            h5.visititems(self.visitor_func)
-
+            #h5.visit(self.visitor_func)
+            self.visitor_func(h5)
         if self.hits is None:
             if len(self.h5_dic[self.filename]) == 1:
                 path, shape = self.h5_dic[self.filename][0]
@@ -271,9 +271,10 @@ class ImageFactory(object):
             item.setText(1,str(len(hits)))
 
 
-    def visitor_func(self, name, node):
-
-            if isinstance(node, h5py.Dataset):
+    def visitor_func(self, h5):
+            for key in h5.keys():
+              node = h5[key]
+              if isinstance(node, h5py.Dataset):
                 if len(node.shape) == 2 and node.size > 512*512:
                     t = (1, node.shape[0], node.shape[1])
                     self.h5_dic[self.filename].append((node.name, t))
@@ -281,7 +282,8 @@ class ImageFactory(object):
                 if len(node.shape) == 3 and node.shape[1] * node.shape[2] > 512*512:
                     self.h5_dic[self.filename].append((node.name, node.shape))
 
-            else:
+              else:
+                print("Sorry no data here")
                 pass
 
 
