@@ -330,6 +330,7 @@ class MProcess(multiprocessing.Process):
         self.Nhits = 0
         self.NFramesPerH5 = 100
         self.h5out = None
+        self.dset = None
 
 
 
