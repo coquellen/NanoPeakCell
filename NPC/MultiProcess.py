@@ -7,7 +7,7 @@ import time
 import numpy as np
 import os
 from .Braggs import find_peaks
-from NPC_CBF import write
+from NPC_CBF import write as write_CBF
 
 # Carefull 3.5
 try:
@@ -318,7 +318,7 @@ class MProcess(multiprocessing.Process):
 
         self.npg = npg
         self.hitsignal = Signals()
-        self.name = name
+        self.name = multiprocessing.current_process().name
         self.kill_received = False
         self.task_queue = task_queue
         self.result_queue = result_queue
@@ -461,8 +461,8 @@ class MProcess(multiprocessing.Process):
 
         # Masking Array
         masked = np.ma.array(self.data, mask=self.mask[self.xmin:self.xmax, self.ymin:self.ymax])
-        N = masked[masked > self.ovl].size
-        if N > 0: print("WARNING: Found %i overloaded pixels - You might want to check your mask" % N)
+        #N = masked[masked > self.ovl].size
+        #if N > 0: print("WARNING: Found %i overloaded pixels - You might want to check your mask" % N)
 
         # Hit Finding
         hit = int( np.count_nonzero(masked.compressed() > self.options['threshold']) >= self.options['npixels'])
@@ -514,14 +514,12 @@ class MProcess(multiprocessing.Process):
             func(OutputFileName,extStr)
 
 
-    def saveEdf(self,OutputFileName,extStr):
-        edfout = fabio.edfimage.edfimage(data=self.data.astype(np.float32))
-        edfout.write('%s.%s'%(OutputFileName,extStr))
-
     def saveCbf(self, OutputFileName,extStr):
-        #cbfout = fabio.cbfimage.cbfimage(data=self.data.astype(np.float32))
-        #cbfout.write('%s.%s'%(OutputFileName,extStr))
-        write('%s.%s'%(OutputFileName,extStr))
+        fname = '%s_%s_%s.%s'%(OutputFileName,
+                               str(self.count).zfill(6),
+                               self.name,
+                               extStr)
+        write_CBF(fname,self.data.astype(np.int32))
 
 
     def savePickle(self, OutputFileName,extStr):
@@ -546,7 +544,7 @@ class MProcess(multiprocessing.Process):
                                           'NPC_run%s' % (self.options['num'].zfill(3)),
                                           'HDF5',
                                           "%s_%s_%i.h5" % (
-                                          self.options['filename_root'], multiprocessing.current_process().name,
+                                          self.options['filename_root'], self.name,
                                           self.Nhits / self.NFramesPerH5))
             self.h5out = h5py.File(OutputFileName, 'w')
             self.dset = self.h5out.create_dataset("data",
@@ -686,32 +684,3 @@ class MProcessEiger(MProcess):
                 self.peakYPosRaw.resize((size, 2000))
                 self.peakTotalIntensity.resize((size, 2000))
         if self.h5out is not None: self.h5out.close()
-
-
-
-
-
-    def saveEdf(self,OutputFileName,extStr):
-        edfout = fabio.edfimage.edfimage(data=self.data.astype(np.float32))
-        edfout.write('%s_%i.%s'%(OutputFileName,self.count,extStr))
-
-    def saveCbf(self, OutputFileName,extStr):
-        #cbfout = fabio.cbfimage.cbfimage(data=self.data.astype(np.float32))
-        #cbfout.write('%s_%i.%s'%(OutputFileName,self.count,extStr))
-        write('%s_%s.%s'%(OutputFileName,str(self.count).zfill(6),extStr),self.data.astype(np.int32))
-
-    def savePickle(self, OutputFileName,extStr):
-        if cctbx:
-            ovl = self.getOvl()
-            pixels = flex.int(self.data2Save.astype(np.int32))
-            pixel_size = self.detector.pixel1
-            data = dpack(data=pixels,
-                         distance=self.options['distance'],
-                         pixel_size=pixel_size,
-                         wavelength=self.options['wavelength'],
-                         beam_center_x=self.options['beam_y'] * pixel_size,
-                         beam_center_y=self.options['beam_x'] * pixel_size,
-                         ccd_image_saturation=ovl,
-                         saturated_value=ovl)
-            easy_pickle.dump('%s_%i.%s'%(OutputFileName,self.count,extStr), data)
-        #else: print('Ahhhhh')
