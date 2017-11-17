@@ -116,7 +116,7 @@ class NpcGenericParser(ConfigParser.RawConfigParser):
         try:
             self.mapping['Input-Output'] = globals()['IO_{}'.format(experiment)]
         except KeyError:
-            print 'Error. Please select only one type of experiment between SSX, SFX_SACLA and SFX_LCLS'
+            print('Error. Please select only one type of experiment between SSX, SFX_SACLA and SFX_LCLS')
 
     def parse_section(self, section, dic):
         """
@@ -167,7 +167,7 @@ def get_result_folder_number(options):
 if __name__ == '__main__':
 
    if len(sys.argv) != 2:
-    print 'Usage: npc config-file'
+    print('Usage: npc config-file')
 
    else:
     config_file = sys.argv[1]

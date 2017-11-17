@@ -7,7 +7,7 @@ import time
 import numpy as np
 import os
 from .Braggs import find_peaks
-from NPC_CBF import write as write_CBF
+from .NPC_CBF import write as write_CBF
 
 # Carefull 3.5
 try:
@@ -102,7 +102,7 @@ try:
     from libtbx import easy_pickle
     from scitbx.array_family import flex
     cctbx = True
-except ImportError or SyntaxError:
+except SyntaxError:
     cctbx = False
 
 class Signals(QtCore.QObject):
@@ -110,213 +110,51 @@ class Signals(QtCore.QObject):
     Stop = QtCore.pyqtSignal(bool)
     Job = QtCore.pyqtSignal(list)
 
+class HitManager(object):
 
-# Not used anymore
-class DisplayResults(multiprocessing.Process):
+    def __init__(self, queue):
+        self.queue = queue
+        self.counter = 0
+        self.Nhit = 0
+        self.N = 0
+        self.fnsHit = ''
+        self.fnsRej = ''
+        self.group = None
+        self.data = []
 
-    def __init__(self, nqueue, results_queue,options, log):
-        multiprocessing.Process.__init__(self)
-        self.t1 = time.time()
-        self.hit = 0
-        self.out = 0
-        self.total = 0
-        self.log = log
-        self.print_function = print
-        self.signals = Signals()
-        self.Nqueue = nqueue
-        self.results = results_queue
-        self.options = options
+    def add(self, hit, chunk, fns, group=None):
+        self.Nhit += hit
+        self.N += chunk
+        self.group = group
+        self.counter += 1
 
-    def run(self):
-        if self.options["live"]:
-            try:
-                while True:
-                    self.displayStats()
+        if hit == 1:
+            self.fnsHit += fns+'\n'
+        else: self.fnsRej += fns+'\n'
 
-            except KeyboardInterrupt:
-                print("\n\nCtrl-c received! --- Aborting and trying not to compromising results...")
-
-        else:
-            while self.out != self.total or self.out == 0:
-                try:
-                    self.displayStats()
-                except KeyboardInterrupt:
-                    print("\n\nCtrl-c received --- Aborting and trying not to compromising results...")
-                    break
-
-            self.displayFinalStats()
-
-    def displayStats(self):
-
-            while True or self.out != self.total:
-                try:
-                    self.total = self.Nqueue.get(block=True, timeout=0.01)
-                    self.chunk = max(int(round(float(self.total) / 1000.)), 10)
-                except Queue.Empty:
-                    pass
-                try:
-                    hit, imgmax, imgmin, imgmed, peaks = self.results.get(block=False, timeout=None)
-                    self.hit += hit
-                    self.out += 1
-                    percent = (float(self.out) / (self.total)) * 100.
-                    hitrate = (float(self.hit) / float(self.out)) * 100.
-                    self.signals.Job.emit([percent, hitrate])
-                    if self.out % self.chunk == 0:
-                        s = '     %6.2f %%       %5.1f %%    %8.2f    %7.2f  %6.2f %4d  (%i out of %i images processed - %i hits)' % (
-                            percent, hitrate, imgmax, imgmin, imgmed, peaks, self.out, self.total, self.hit)
-
-                        if self.log is None:
-
-                            self.print_function(s, end='\r')
-                            sys.stdout.flush()
-                        else:
-                            self.print_function(s)
+        if self.counter % 10 ==0:
+            self.send()
 
 
-                except Queue.Empty:
-                    break
 
-    def displayFinalStats(self):
-            self.t2 = time.time()
-            if self.out == 0:
-                finalMessage = 'Slow Down - NPC was not able to process a single frame !!!'
-            else:
-                finalMessage = '\n\nOverall, found %s hits in %s processed files --> %5.1f %% hit rate with a threshold of %s' \
-                               '\nIt took %4.2f seconds to process %i images (i.e %4.2f images per second)' % (
-                               self.hit,
-                               self.out,
-                               float(self.hit) / (self.out) * 100.,
-                               self.options['threshold'],
-                               self.t2 - self.t1,
-                               self.out,
-                               self.out / (self.t2 - self.t1))
-            self.print_function(finalMessage)
-            self.signals.Stop.emit(True)
-# Not used anymore
-
-
-class FileSentinel(multiprocessing.Process):
-    def __init__(self, task_queue, total_queue, options):
-        multiprocessing.Process.__init__(self)
-        self.kill_received = False
-        self.total_queue = total_queue
-        self.tasks = task_queue
-        self.options = options
-        self.live = self.options['live']
-        self.all = []
-        self.total = 0
-        self.chunk = 0
-        self.h5path = None
-        self.overload = 0
-
-        #User Choice
-        if 'h5' in self.options['file_extension']:
-            self.load_queue = self.loadH5Queue
-        else:
-            self.load_queue = self.loadSsxQueue
-
-    def loadSsxQueue(self):
-        try:
-            self.total += len(self.filenames)
-            self.total_queue.put(self.total)
-            for fname in self.filenames:
-                self.tasks.put(fname, block=True, timeout=None)
-            self.givePoisonPill()
-        except KeyboardInterrupt:
-            print("File Sentinel exited properly")
-            return
-
-    def loadH5Queue(self):
-
-        #Looking for data path into h5, getting type and deducing data overload
-        self.h5path, self.overload, self.type = self.geth5path(self.filenames)
-
-        if self.options['background_subtraction'].lower() != 'none':
-            self.type=np.float64
-
-        if self.options['HitFile'] is None:
-            for filename in self.filenames:
-                #Log("[%s] Opening %s"%(self.name, filename))
-                h5 = h5py.File(filename)
-                try:
-                    num_frames, res0, res1 = h5[self.h5path].shape
-                    self.total += num_frames
-                    task = (filename, self.h5path, self.overload, self.type, num_frames)
-                    self.tasks.put(task, block=True, timeout=None)
-                    self.total_queue.put(self.total)
-                except KeyError:
-                    continue
-                except KeyboardInterrupt:
-                    print("File Sentinel exited properly")
-                    return
-
-                h5.close()
-        else:
-            for filename in self.filenames:
-                task = (filename, self.h5path, self.overload, self.type, self.options['HitFile'][filename])
-                self.tasks.put(task, block=True, timeout=None)
-                self.total += len(self.options['HitFile'][filename])
-
-        self.total_queue.put(self.total)
-        self.chunk = max(int(round(float(self.total) / 1000.)), 10)
-
-        self.givePoisonPill()
-
-    def visitor_func(self, name, node):
-        if isinstance(node, h5py.Dataset):
-            try:
-                if node.shape[1] * node.shape[2] > 512 * 512:
-                    return node.name
-            except IndexError:
-                return None
-
-    def geth5path(self, fns):
-        i = 0
-        path = None
-        while path is None:
-            h5 = h5py.File(fns[i])
-            i += 1
-            path = h5.visititems(self.visitor_func)
-            if path is not None:
-                ty = h5[path].dtype
-                try:
-                    ovl = np.iinfo(ty).max
-                except ValueError:
-                    ovl = np.finfo(ty).max
-
-                return path, ovl, ty
-
-    def givePoisonPill(self):
-        if not self.live:
-            for i in range(self.options['cpus']):
-                self.tasks.put(None)
-
-
-    def run(self):
-        try:
-            if self.options['HitFile'] is None:
-                self.filenames = get_filenames(self.options)
-            else:
-                self.filenames = self.options['HitFile'].keys()
-            self.load_queue()
-            if self.live:
-                while True:
-                    self.all += self.filenames
-                    self.filenames = get_filenames(self.options, self.all)
-                    if self.filenames:
-                            self.load_ssx_queue()
-                    time.sleep(10)
-        except KeyboardInterrupt:
-            print("File Sentinel exited properly")
-            return
+    def send(self):
+        self.queue.put((self.Nhit, self.N, self.fnsHit, self.fnsRej, self.group))
+        self.counter = 0
+        self.Nhit = 0
+        self.N = 0
+        self.fnsHit = ''
+        self.group = None
 
 
 class MProcess(multiprocessing.Process):
+
+
 
     def __init__(self, task_queue, result_queue, options, detector, ai, MShemArray, name, npg=None):
         multiprocessing.Process.__init__(self)
 
         self.npg = npg
+        self.name = name
         self.hitsignal = Signals()
         self.name = multiprocessing.current_process().name
         self.kill_received = False
@@ -327,15 +165,18 @@ class MProcess(multiprocessing.Process):
         self.AzimuthalIntegrator = ai
         self.signal = True
         self.MShemArray = MShemArray
+        self.count = 0
         self.Nhits = 0
         self.NFramesPerH5 = 100
         self.h5out = None
         self.dset = None
+        self.manager = HitManager(self.result_queue)
+        self.exit = multiprocessing.Event()
 
 
 
         #Defining ROI
-        if self.options['roi'] == 'None' :
+        if self.options['roi'].lower() == 'none' :
             self.xmax, self.ymax = self.detector.shape
             self.xmin, self.ymin = 0, 0
             self.ActiveROI = False
@@ -402,27 +243,31 @@ class MProcess(multiprocessing.Process):
 
 
     def run(self):
-        while True:
+        while not self.exit.is_set() :
             try:
                     next_task = self.task_queue.get()
                     if next_task is None:
-                        self.exitProperly()
+                        #self.exitProperly()
                         break
                     else:
                         self.task_queue.task_done()
                         self.isHit(next_task)
 
-
             except KeyboardInterrupt:
                 self.exitProperly()
                 return
+        self.exitProperly()
         return
+
+    def shutDown(self):
+        print("Process %s received signal" % self.name)
+        self.exit.set()
 
     def exitProperly(self):
         try:
             self.task_queue.task_done()
         except ValueError: pass
-
+        self.manager.send()
         size = self.Nhits % self.NFramesPerH5
         shape = (size, self.detector.shape[0], self.detector.shape[1])
 
@@ -434,7 +279,7 @@ class MProcess(multiprocessing.Process):
                 self.peakYPosRaw.resize((size, 2000))
                 self.peakTotalIntensity.resize((size, 2000))
         if self.h5out is not None: self.h5out.close()
-
+        print("Process %s exited Properly" % self.name)
 
     def isHit(self,filename):
 
@@ -469,7 +314,8 @@ class MProcess(multiprocessing.Process):
         hit = int( np.count_nonzero(masked.compressed() > self.options['threshold']) >= self.options['npixels'])
 
         #Could delay that
-        self.result_queue.put((hit, 1, filename))
+        self.manager.add(hit, 1, filename, None)
+        #self.result_queue.put((hit, 1, filename))
 
         if len(self.options['output_formats'].split()) > 0 and hit > 0:
             if self.ActiveROI:
@@ -479,12 +325,8 @@ class MProcess(multiprocessing.Process):
 
             self.saveHit(filename)
 
-
-
-
     def setOutputRoot(self, fname):
         self.root, self.extension = os.path.splitext(os.path.basename(fname))
-
 
     def saveHit(self, fname):
 
@@ -514,7 +356,6 @@ class MProcess(multiprocessing.Process):
 
             func(OutputFileName,extStr)
 
-
     def saveCbf(self, OutputFileName,extStr):
         fname = '%s_%s_%s.%s'%(OutputFileName,
                                str(self.count).zfill(6),
@@ -538,6 +379,7 @@ class MProcess(multiprocessing.Process):
                          saturated_value=ovl)
             easy_pickle.dump('%s.%s'%(OutputFileName,extStr), data)
         #else: print('Ahhhh')
+
     def saveH5(self, OutputFileName,extStr):
         if self.Nhits % self.NFramesPerH5 == 0:
             if self.h5out is not None: self.h5out.close()
@@ -603,6 +445,8 @@ class MProcessEiger(MProcess):
         self.dset = None
         self.data = np.zeros((self.xmax - self.xmin, self.ymax - self.ymin), dtype=self.type)
         self.count = 0
+        self.manager = HitManager(self.result_queue)
+
 
     def isHit(self,task):
 
@@ -613,6 +457,7 @@ class MProcessEiger(MProcess):
             iterable = [int(x) for x in N]
         else: iterable = range(0,N)
         for i in iterable:
+          if not self.exit.is_set():
             #Dark Correction
             if self.options['background_subtraction'].lower() != 'none':
                 # if self.data.shape == self.detector.shape:
@@ -629,24 +474,21 @@ class MProcessEiger(MProcess):
                         restore_mask=True)[0][self.xmin:self.xmax,self.ymin:self.ymax]
 
             else:
+
                 self.data = self.correctData(self.h5[self.group][i,self.xmin:self.xmax,self.ymin:self.ymax].astype(np.int32),
                                          self.dark,
                                          self.options['ROI_tuple'])
             
-            #BKG Sub using mask
 
-            #Masking Array
-            
+
             masked = np.ma.array(self.data,
                                  mask=self.mask[self.xmin:self.xmax, self.ymin:self.ymax])
 
-            #N=masked[masked > self.ovl].size
-            #if N > 0: print("WARNING: Found %i overloaded pixels - You might want to check your mask"%N)
 
             #Hit Finding
             hit = int( np.count_nonzero(masked.compressed() > self.options['threshold']) >= self.options['npixels'])
-
-            self.result_queue.put((hit, 1, '%s //%i'%(filename,i)))
+            self.manager.add(hit,1,'%s //%i' % (filename,i), self.group)
+            #self.result_queue.put((hit, 1, '%s //%i' % (filename,i), self.group))
 
             if len(self.options['output_formats'].split()) > 0 and hit > 0:
                 if self.options['roi'].lower() != 'none':
@@ -685,3 +527,4 @@ class MProcessEiger(MProcess):
                 self.peakYPosRaw.resize((size, 2000))
                 self.peakTotalIntensity.resize((size, 2000))
         if self.h5out is not None: self.h5out.close()
+        print("Process %s exited Properly" % self.name)

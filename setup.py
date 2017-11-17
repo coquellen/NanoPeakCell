@@ -10,8 +10,8 @@ setup(
 	author        =   "Nicolas Coquelle",
 	author_email  =   "coquelleni@ill.fr",
 	packages      =   find_packages(),
-    package_data={'NPC': ['bitmaps/*','gui/cmaps/*']},
-	scripts = ['NPC/npc','NPC/gui/npg', 'NPC/gui/npg_dev'],
+    package_data={'NPC': ['bitmaps/*','gui/cmaps/*','gui/icons/*']},
+	scripts = ['NPC/npc','NPC/gui/npg'],
 
     ext_modules=[
         Extension('cbf_c', [

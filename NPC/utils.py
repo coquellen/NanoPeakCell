@@ -9,6 +9,10 @@ def Log(message):
     print(message)
 
 
+def get_class(module_name, class_name):
+    m = importlib.import_module(module_name)
+    c = getattr(m, class_name)
+    return c
 
 def startup(options, print_function):
 
@@ -104,6 +108,7 @@ def get_filenames(options, fns=[]):
                 return sorted(f)
             else:
                 print('Sorry, no file to be processed... Yet ?')
+                #return None
                 sys.exit(0)
 
         if not fns:
@@ -111,10 +116,14 @@ def get_filenames(options, fns=[]):
             print('\n= Job progression = Hit rate =')
         return sorted(f)
 
-def parseHits(filename):
+def parseHits(filename, openfn=True):
     hits = {}
-    with open(filename) as f:
-        for line in f:
+    if openfn:
+        f = open(filename).readlines()
+    else:
+        f = filename
+    #with open(filename) as f:
+    for line in f:
             try:
                 fn, index = line.split()
                 if fn in hits.keys():

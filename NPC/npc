@@ -8,6 +8,7 @@ except ImportError:
 import os.path
 import sys
 import NPC.utils as utils
+import json
 
 def parseBoolString(s):
     return s.strip().lower() in ('true', 't', 'yes', '1')
@@ -191,7 +192,11 @@ if __name__ == '__main__':
                 options.update(npc_parser.mapping[key])
             options['num'] = utils.get_result_folder_number(options)
             utils.create_results_folders(options)
-            shutil.copyfile(config_file,os.path.join(options['output_directory'], 'NPC_run%s'%options['num'].zfill(3), os.path.basename(config_file)))
+            results = os.path.join(options['output_directory'], 'NPC_run%s' %options['num'].zfill(3))
+            options['json_file'] = os.path.join(results, 'NPC_params.json')
+
+
+            shutil.copyfile(config_file, os.path.join(results, config_file))
 
             if options['parallelism'] == 'MPI':
                 from NPC.PreProcessing import DataProcessingMPI as DataProc

@@ -1,50 +1,20 @@
-import fabio
 import h5py
 import os
 import glob
-from PyQt4 import QtCore, QtGui
+from PyQt4 import QtGui
 try:
     import cPickle
 except ImportError:
     pass
-
-
 from NPC.utils import Log, parseHits
 
-def load_pickle(file_name, faster_but_using_more_memory=True):
-  """
-  Wraps cPickle.load.
 
-  Parameters
-  ----------
-  file_name : str
-  faster_but_using_more_memory : bool, optional
-      Optionally read the entirety of a file into memory before converting it
-      into a python object.
-
-  Returns
-  -------
-  object
-  """
-  if (faster_but_using_more_memory):
-    return cPickle.loads(open(file_name, "rb").read())
-  return cPickle.load(open(file_name, "rb"))
-
-
-class ConstructingTree(QtCore.QThread):
+class TreeFactory(object):
 
     def __init__(self, tree):
-        QtCore.QThread.__init__(self, tree)
-        self.tree = tree
-
-
-class ImageFactory(object):
-
-    def __init__(self, tree, parent):
         self.h5_fn = None
         self.h5 = None
         self.tree = tree
-        self.parent = parent
         self.filename = None
         self.types = ( 'edf',
                        'h5',
@@ -61,77 +31,14 @@ class ImageFactory(object):
                        'mar3450',
                        'pickle',
                        )
-        self.filename = None
         self.h5_dic = {}
         self.filenames_dic = {}
         self.hits = None
 
-    def openframe(self, fn, path='/data', index=None):
-        ext = os.path.splitext(fn)[1]
-        if 'h5' in ext:
-            return self.openh5(fn,index,path)
-        elif 'pickle' in ext:
-            return self.openpickle(fn)
-        else:
-            return self.openimg(fn)
-
-    def openh5(self,fn, index=None, path='/data'):
-        if fn != self.h5_fn:
-            self.h5_fn = fn
-            if self.h5 is not None: self.h5.close()
-            self.h5 = h5py.File(fn)
-        for dataset in self.h5_dic[fn]:
-                if path == dataset[0]:
-                    if index is None:
-                      return None,self.h5[path][:].T
-                    else:
-                        return None, self.h5[path][index,::].T
-
-    def openimg(self,fn):
-        img = fabio.open(fn)
-        return img.header, img.data.T
-
-    def openpickle(self,fn):
-
-        img = load_pickle(self.filename)
-        # This code snippet helps to remove the border of each tile of the CSPAD (lots of overload)
-        #
-        #data = img['DATA'].as_numpy_array()
-        #mask = np.where(data > 0, 0, 1)
-        #s = ndimage.generate_binary_structure(2, 1)
-        #self.dset = data*np.logical_not(ndimage.binary_dilation(mask, structure =s ))
-        data = img['DATA'].as_numpy_array()
-        return None, data.T
-
-    def getImages(self):
-        path = QtGui.QFileDialog.getExistingDirectory(
-                       self.parent,
-                       "Select a folder",
-                       self.parent.cwd,
-            QtGui.QFileDialog.DontUseNativeDialog | QtGui.QFileDialog.ShowDirsOnly)
-        if path:
-            self.parent.cwd=path
-            self.tree.clear()
-            self.run(str(path))
-
-    def run_hits(self, hits):
-        self.tree.clear()
+    def run_hits(self, hits, clear=True):
+        if clear:self.tree.clear()
         for f in hits.keys():
-            if not f.endswith('.h5'):
-                path, fn = os.path.split(os.path.abspath(f))
-                s = os.path.join(os.path.basename(path), fn)
-                self.filenames_dic[s] = f
-                item = QtGui.QTreeWidgetItem(self.tree)
-                item.setText(0, s)
-                item.setText(1, "1")
-            else:
-                path, fn = os.path.split(os.path.abspath(f))
-                s = os.path.join(os.path.basename(path), fn)
-                self.filenames_dic[s] = f
-                self.h5_dic[f] = []
-                self.filename = f
-                self.construct_tree(s, self.tree)
-
+            self.addItem(f,self.tree)
 
     def run(self, path):
             self.hits = None
@@ -148,99 +55,75 @@ class ImageFactory(object):
             # h5['/entry/instrument/detector/detector_distance'][()] (meter)
             # TODO: Remove paths from tree name - Done
             # TODO:
+            self.buildTree(files)
 
+    def buildTree(self, files):
             masters = [f for f in files if 'master.h5' in f]
             for master in sorted(masters):
-                item = QtGui.QTreeWidgetItem(self.tree)
-                path, fn = os.path.split(os.path.abspath(master))
-                s = os.path.join(os.path.basename(path), fn)
-                self.filenames_dic[s] = master
-                item.setText(0, s)
+                master_item = self.addItem(master, self.tree,txt='')
                 files.remove(master)
                 root = master.strip('master.h5')
                 datas = [f for f in files if root in f]
 
                 for data in sorted(datas):
-                    self.filename = data
-                    self.h5_dic[self.filename] = []
-                    path, fn = os.path.split(self.filename)
-                    s = os.path.join(os.path.basename(path), fn)
-                    self.filenames_dic[s] = self.filename
-                    self.construct_tree(s, item)
+                    self.addItem(data, master_item)
                     files.remove(data)
-
             for f in files:
-                if not f.endswith('.h5'):
-                    path, fn = os.path.split(os.path.abspath(f))
-                    s = os.path.join(os.path.basename(path), fn)
-                    self.filenames_dic[s] = f
-                    item = QtGui.QTreeWidgetItem(self.tree)
-                    item.setText(0, s)
-                    item.setText(1, "1")
-                else:
-                    path, fn = os.path.split(os.path.abspath(f))
-                    s = os.path.join(os.path.basename(path), fn)
-                    self.filenames_dic[s] = f
-                    self.h5_dic[f] = []
-                    self.filename = f
-                    self.construct_tree(s, self.tree)
+                self.addItem(f, self.tree)
 
     def append_object(self,obj):
-        #print obj
-        #obj = os.path.basename(obj)
-        #print(obj)
         if os.path.isfile(obj):
-            print('AAhhh0')
             self.append_file(obj)
         elif os.path.isdir(obj):
             print("dir")
+            self.hits= None
             self.tree.clear()
             self.run(str(obj))
 
-
     def append_file(self, fn):
-        print(fn)
         filename, file_extension = os.path.splitext(fn)
         if file_extension.strip('.') in self.types:
-            self.add_tree(fn)
+            self.hits = None
+            self.addItem(fn, self.tree)
         if file_extension == '.txt':
-            Log("Will load hits from list %s"%fn)
+            Log("Will load hits from list %s" % fn)
             self.hits = parseHits(fn)
             self.run_hits(self.hits)
 
-    def add_tree(self,f):
+    def restoreTree(self,dic):
+        # This step is necessary to obtain str and not QString...
+        newd = {}
+        for k, v in dic.items():
+            newd[str(k)] = str(v)
+        ###
+        self.buildTree(newd.values())
+        self.filenames_dic = newd
+
+    def addItem(self,f, parent,txt='tba'):
+        path, fn = os.path.split(os.path.abspath(f))
+        s = os.path.join(os.path.basename(path), fn)
+        self.filenames_dic[s] = f
+        item = QtGui.QTreeWidgetItem(parent)
+        item.setText(0, s)
         if not f.endswith('.h5'):
-            path, fn = os.path.split(os.path.abspath(f))
-            s = os.path.join(os.path.basename(path), fn)
-            self.filenames_dic[s] = f
-            item = QtGui.QTreeWidgetItem(self.tree)
-            item.setText(0, s)
             item.setText(1, "1")
         else:
-            path, fn = os.path.split(os.path.abspath(f))
-            s = os.path.join(os.path.basename(path), fn)
-            self.filenames_dic[s] = f
             self.h5_dic[f] = []
-            self.filename = f
-            self.construct_tree(s, self.tree)
+            item.setText(1, txt)
 
-    def construct_tree(self, f, parent):
-
-            item = QtGui.QTreeWidgetItem(parent)
-            item.setText(0,f)
-            item.setText(1,'tba')
+        return item
 
     def construct_tree_h5(self, fn, item):
-
         self.filename = self.filenames_dic[fn]
         with h5py.File(self.filename, 'r') as h5:
-            #h5.visit(self.visitor_func)
             self.visitor_func(h5)
         if self.hits is None:
             if len(self.h5_dic[self.filename]) == 1:
                 path, shape = self.h5_dic[self.filename][0]
                 if shape[0] == 1:
                     item.setText(1,"1")
+                    #print path, shape, self.filename
+                    #Here emit a signal to display the file
                 else:
                     item.setText(1, str(shape[0]))
                     for i in range(shape[0]):
@@ -249,43 +132,40 @@ class ImageFactory(object):
             else:
                 count = 0
                 for dataset in self.h5_dic[self.filename]:
-                    path , shape = dataset
+                    path, shape = dataset
                     item1 = QtGui.QTreeWidgetItem(item)
-                    item1.setText(0,path)
+                    item1.setText(0, path)
                     if shape[0] == 1:
-                        item1.setText(1,"1")
+                        item1.setText(1,  "1")
                     else:
                         item1.setText(1, str(shape[0]))
                         for i in range(min(100,shape[0])):
                             item2 = QtGui.QTreeWidgetItem(item1)
-                            item2.setText(0, '%s %8i'%(path,i))
+                            item2.setText(0, '%s %8i' % (path,i))
                         count += shape[0]
                     item.setText(1, str(count))
-
         else:
             hits = self.hits[self.filename]
-            path, shape = self.h5_dic[self.filename][0]
-            for hit in hits:
-                item1 = QtGui.QTreeWidgetItem(item)
-                item1.setText(0, "%s %8s"%(path,hit))
-            item.setText(1,str(len(hits)))
-
+            if isinstance(hits, int):
+                item.setText(1, "1")
+            else:
+                path, shape = self.h5_dic[self.filename][0]
+                for hit in hits:
+                    item1 = QtGui.QTreeWidgetItem(item)
+                    item1.setText(0, "%s %8s"%(path,hit))
+                item.setText(1,str(len(hits)))
 
     def visitor_func(self, h5):
             for key in h5.keys():
-              node = h5[key]
-              if isinstance(node, h5py.Dataset):
-                if len(node.shape) == 2 and node.size > 512*512:
-                    t = (1, node.shape[0], node.shape[1])
-                    self.h5_dic[self.filename].append((node.name, t))
-
-                if len(node.shape) == 3 and node.shape[1] * node.shape[2] > 512*512:
-                    self.h5_dic[self.filename].append((node.name, node.shape))
-
-              else:
-                print("Sorry no data here")
-                pass
-
+                node = h5[key]
+                if isinstance(node, h5py.Dataset):
+                    if len(node.shape) == 2 and node.size > 512*512:
+                        t = (1, node.shape[0], node.shape[1])
+                        self.h5_dic[self.filename].append((node.name, t))
+                    if len(node.shape) == 3 and node.shape[1] * node.shape[2] > 512*512:
+                        self.h5_dic[self.filename].append((node.name, node.shape))
+                else:
+                    self.visitor_func(node)
 
 
 

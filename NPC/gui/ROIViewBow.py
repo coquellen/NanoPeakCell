@@ -5,6 +5,8 @@ from scipy.ndimage.filters import gaussian_filter
 import numpy as np
 from PyQt4.QtCore import QPointF as PointF
 
+
+
 class ShowROI(QtGui.QWidget):
     def __init__(self):
         QtGui.QWidget.__init__(self)

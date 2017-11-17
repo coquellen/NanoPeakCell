@@ -1,686 +1,727 @@
 #!/usr/bin/env python
-
-import pkg_resources as pkg
-from PyQt4 import QtCore, QtGui
-from NPC.gui.npg_qt4_ui import Ui_MainWindow
-from NPC.gui.npg_int_ui import Ui_Intensities
-from NPC.gui.ROIViewBow import CustomViewBox
-
-from NPC.gui.Frame import ImageFactory
-import NPC.gui.Headers as Headers
-from NPC.gui.geom import parse_geom_file, reconstruct
-import NPC.gui.peakfind as pf
-import NPC
-
+from PyQt4 import QtGui, QtCore
 import pyqtgraph as pg
-import numpy as np
-import pyFAI
 import os
-import sys
-from time import time, sleep
-import importlib
+from Views import ImageView, XPView, TreeFileView, HitFindingView, TableWidget
+from Models import NPGData
+import inspect
+from Stream import CrystFELStream as CStream
+from NPC import utils
+import json
+from NPC.PreProcessing import DataProcessingMultiprocessing as DataProc
+from PyQt4.QtCore import pyqtSignal
+import shutil
+import glob
+app = QtGui.QApplication([])
+from ZmqSockets import NPGPull
 
-color_mapping = {'Hot'   : 'w',
-                 'Gray'  : 'r',
-                 'Gray_r': 'k',
-                 'Jet'   : 'w',
-                 'Reds_r': 'w',
-                 'YGB_r': 'w',
-                 'Reds'  : 'k',
-                 'Blues' : 'k',
-                 'Blues_r': 'w',
-                 'Spectral' : 'k',
-                 'Spectral_r': 'k'
-                 }
+class NPCThread(QtCore.QThread):
 
+    stop = pyqtSignal()
 
-def get_class(module_name,class_name):
-    m = importlib.import_module(module_name)
-    c = getattr(m, class_name)
-    return c
+    def __init__(self, params):
+        QtCore.QThread.__init__(self, )
+        self.Process = DataProc(params)
 
+    def run(self, priority=None):
+        self.Process.run()
+        self.stop.emit()
 
-class ShowNumbers(QtGui.QWidget):
+class NPGMenuBar(QtGui.QMenuBar):
     def __init__(self):
-        QtGui.QWidget.__init__(self)
-        self.ui = Ui_Intensities()
-        self.ui.setupUi(self)
+        QtGui.QMenuBar.__init__(self)
+
+        self.menuFile = self.addMenu("&File")
+        self.actionLoad_Images = self.menuFile.addAction("&Load Images")
+        self.actionLoad_Images.setShortcut('Ctrl+O')
+        self.actionLoad_Mask = self.menuFile.addAction("&Load Mask")
+        self.actionLoad_Mask.setShortcut('Ctrl+M')
+        self.actionLoad_Geometry = self.menuFile.addAction("&Load Geometry")
+        self.actionLoad_Geometry.setShortcut('Ctrl+G')
+        self.actionSep1 = self.menuFile.addAction("")
+        self.actionSep1.setSeparator(True)
+
+        self.action_Clear = self.menuFile.addAction("&Clear Image List")
+        self.action_Clear.setShortcut('Ctrl+C')
+        self.actionDelete_Mask = self.menuFile.addAction("&Delete Mask")
+        self.actionDelete_Geom = self.menuFile.addAction("&Delete Geom")
+        self.actionSep2 = self.menuFile.addAction("")
+        self.actionSep2.setSeparator(True)
+        self.actionClose = self.menuFile.addAction("&Close")
 
 
-class NPG(QtGui.QMainWindow):
 
-    def __init__(self, app,parent=None):
-        QtGui.QWidget.__init__(self, parent)
+        self.menuShow = self.addMenu("&Show")
+        self.actionBeam_Center = QtGui.QAction("&Beam Center", self)
+        self.actionBeam_Center.setShortcut('Ctrl+B')
+        self.actionBeam_Center.setCheckable(True)
+        self.actionBeam_Center.setChecked(False)
+        self.actionBeam_Center.setIconVisibleInMenu(False)
+        self.actionResolution_Rings = QtGui.QAction("&Resolution Rings", self)
+        self.actionResolution_Rings.setShortcut('Ctrl+R')
+        self.actionResolution_Rings.setCheckable(True)
+        self.actionResolution_Rings.setChecked(True)
+        self.actionBragg_Peaks = QtGui.QAction("&Bragg Peaks", self)
+        self.actionBragg_Peaks.setShortcut('Ctrl+P')
+        self.actionResolution_Rings.setCheckable(True)
+        self.actionResolution_Rings.setChecked(False)
+        self.menuShow.addAction(self.actionBeam_Center)
+        self.menuShow.addAction(self.actionResolution_Rings)
+
+
+        self.menuView = self.addMenu("&View")
+        self.actionFile_Tree = QtGui.QAction("&Image List", self)
+        self.actionFile_Tree.setCheckable(True)
+        self.actionFile_Tree.setChecked(True)
+        self.actionExperimental_Settings = QtGui.QAction("&Experimental Settings", self)
+        self.actionExperimental_Settings.setCheckable(True)
+        self.actionExperimental_Settings.setChecked(True)
+        self.actionHit_Finding = QtGui.QAction("&Hit Finding", self)
+        self.actionHit_Finding.setCheckable(True)
+        self.actionHit_Finding.setDisabled(True)
+        self.actionRuns = QtGui.QAction("&NPC Runs", self)
+        self.actionRuns.setCheckable(True)
+        self.actionRuns.setDisabled(True)
+
+        self.menuView.addAction(self.actionFile_Tree)
+        self.menuView.addAction(self.actionExperimental_Settings)
+        self.menuView.addAction(self.actionHit_Finding)
+        self.menuView.addAction(self.actionRuns)
+
+        self.menuMode = self.addMenu("&NPG Mode")
+        #self.MenuModeOff = self.menuMode.addMenu("&Offline")
+        self.actionOffImages = self.menuMode.addAction("&Display Images")
+        self.actionOffImages.setCheckable(True)
+
+        self.actionStream = self.menuMode.addAction("&Inspect Stream")
+        self.actionStream.setCheckable(True)
+        #self.actionStream.setEnabled(False)
+
+        #self.MenuModeOn = self.menuMode.addMenu("&Online")
+        #self.actionOnPort = self.MenuModeOn.addAction("&Listen a port")
+        #self.actionOnPort.setCheckable(True)
+        #self.actionOnEiger = self.MenuModeOn.addAction("&Listen Eiger Stream")
+        #self.actionOnEiger.setCheckable(True)
+        #self.actionOnEiger.setEnabled(False)
+
+        self.OffGroup = QtGui.QActionGroup(self.menuMode)
+        self.OffGroup.addAction(self.actionOffImages)
+        self.OffGroup.addAction(self.actionStream)
+        #self.OffGroup.addAction(self.actionOnPort)
+        #self.OffGroup.addAction(self.actionOnEiger)
+        self.actionOffImages.setChecked(True)
+
+    #Slots for emitted signals
+    def UncheckMenuView(self,attr):
+        Qaction = getattr(self,str(attr))
+        Qaction.setChecked(False)
+
+class NPGController(object):
+
+    def __init__(self, app):
         self.app = app
-        self.ui = Ui_MainWindow()
-        self.ui.setupUi(self)
-        self.popup_int = ShowNumbers()
-        self.data = None
-        self.cursorx = None
-        self.cursory = None
-        self.geom = None
-        self.imgfact = ImageFactory(self.ui.treeWidget, self)
+        self.binning = 1
+        self.settings = QtCore.QSettings('Mycompany', 'NPG')
+        self.XPView = XPView(False)
+        self.ImageView = ImageView(self.XPView, None, self.binning, req= "HIT", timeout= 100, name='ImageView')
+        self.TreeFileView = TreeFileView()
+        self.HitFindingView = HitFindingView(self)
+        self.Table = TableWidget()
+        self.ImgModel = NPGData()
+        self.menuBar = NPGMenuBar()
+        self.menuBar.setGeometry(QtCore.QRect(0, 0, 1060, 27))
+        self.ImageView.setMenuBar(self.menuBar)
+        self.menuBar.setNativeMenuBar(False)
 
-        # Bragg Spot Parameters
-        self.MaxBraggs = 2000
-        self.MaxOverThreshold = 10000
-        self.max_t = 0
-        self.filename_cache = None
 
-        self.root = os.path.dirname(os.path.abspath(NPC.__file__))
+        self.NPGPuller = NPGPull('127.0.0.1', 5556, self.ImgModel, self.Table, opts=[], flags=None)
+
+        self.currentMode = "OffImage"
         self.cwd = os.getcwd()
-        self.ShowBC = False
-        self.ShowRings = False
-        self.rings = []
 
-        #Pyqtgraph
-        self.view = CustomViewBox(parent = self)
-        self.PlotItem = pg.PlotItem(viewBox=self.view)
-        self.PlotItem.setDownsampling(ds=2,auto=False,mode='peak')
-        self.PlotItem.setClipToView(True)
-        for ax in ['left', 'top', 'bottom', 'right']:
-            self.PlotItem.hideAxis(ax)
-        self.ui.graphicsView.addItem(self.PlotItem)
-        self.view.setAspectLocked(True)
-        self.img = pg.ImageItem(border='w')
-        self.PlotItem.addItem(self.img)
-        self.PlotItem.setTitle("<span style='font-size: 12pt'>x      -- <span style='color: red'>y     </span>"+ '&nbsp;'*15 + "<span style='color: red'>Res:</span>" )
+        # The dealing of NPC jobs should be done in a different object
+        self.nRun = 1
+        self.waitingList = []
+        self.waitingDic = {}
+        self.running = []
+        #
+        self.menuBar.show()
+        self.restoreState()
 
-        # Bindings - Left Panel - Hit findind section
-        self.ui.DataPathBut.clicked.connect(lambda: self.getPath(self.ui.DataPath))
-        self.ui.ResPathBut.clicked.connect(lambda: self.getPath(self.ui.ResultsPath))
-        self.ui.DarkPathBut.clicked.connect(lambda: self.getFile(self.ui.DarkPath))
-        self.ui.MaskPathBut.clicked.connect(lambda: self.getFile(self.ui.MaskPath))
-        self.ui.treeWidget.itemSelectionChanged.connect(self.updateTree)
+        self.restoreRuns()
 
-        # Bindings - Left Panel - Hit findind section
-        self.ui.beamX.editingFinished.connect(self.setBeamX)
-        self.ui.beamY.editingFinished.connect(self.setBeamY)
-        self.ui.distance.editingFinished.connect(self.setDistance)
-        self.ui.Wavelength.editingFinished.connect(self.setWavelength)
-        self.ui.Detector.currentIndexChanged.connect(self.SetDetector)
-        self.ui.FindBraggsButton.clicked.connect(lambda: self.find_braggs(self.ui.BraggThreshold))
-        self.ui.FindBraggsButton.setShortcut('Ctrl+F')
+        # Bindings with emitted signals
+        self.ImageView.closeSignal.connect(self.CloseAll)
+        self.TreeFileView.hideMe.connect(self.menuBar.UncheckMenuView)
+        self.XPView.hideMe.connect(self.menuBar.UncheckMenuView)
+        self.HitFindingView.hideMe.connect(self.menuBar.UncheckMenuView)
+        self.Table.hideMe.connect(self.menuBar.UncheckMenuView)
 
-        # Bindings - Right Panel - Viewer Options
-        self.ui.LoadResultsBut.clicked.connect(self.imgfact.getImages)
-        self.ui.Max.editingFinished.connect(self.updateMax)
-        self.ui.Min.editingFinished.connect(self.updateMin)
-        self.ui.Boost.editingFinished.connect(self.updateBoost)
-        self.ui.ColorMap.currentIndexChanged.connect(self.updateCmap)
+        self.TreeFileView.openFile.connect(self.ImgModel.updateData)
+        self.Table.loadResults.connect(self.LoadResults)
+        self.Table.deleteFolder.connect(self.deleteFolder)
+        self.Table.stop.connect(self.stopNPCviaTable)
 
-        # Bindings - ViewBox
-        self.proxy = pg.SignalProxy(self.view.scene().sigMouseMoved, rateLimit=10, slot=self.mouseMoved)
-        self.view.scene().sigMouseClicked.connect(self.getIntensities)
 
-        #Bindings - Menu
-        self.ui.actionLoad_Geometry.triggered.connect(self.loadGeom)
-        self.ui.actionLoad_Geometry.setShortcut('Ctrl+G')
-        self.ui.actionLoad_Images.triggered.connect(self.imgfact.getImages)
-        self.ui.actionLoad_Images.setShortcut('Ctrl+O')
-        self.ui.actionClose.triggered.connect(QtGui.QApplication.quit)
-        self.ui.actionClose.setShortcut('Ctrl+Q')
-        self.ui.actionShow_Beam_Center.triggered.connect(self.updateBC)
-        self.ui.actionShow_Beam_Center.setShortcut('Ctrl+C')
-        self.ui.actionShow_resolution_rings.triggered.connect(self.updateRings)
-        self.ui.actionShow_resolution_rings.setShortcut('Ctrl+R')
-        self.ui.actionShow_Bragg_Peaks.triggered.connect(self.updateBraggs)
-        self.ui.actionShow_Bragg_Peaks.setShortcut('Ctrl+B')
+        # Binding with Table
 
-        self.connect(self.ui.treeWidget, QtCore.SIGNAL("dropped"), self.FileDropped)
-        # Live Play
-        self.item = None
-        self.ui.PlayButton.clicked.connect(self.play)
-        self.ui.StopButton.clicked.connect(self.stop)
-        self.playtimer = QtCore.QTimer()
-        self.playtimer.timeout.connect(self.updateData)
+        #Binding wit FileTree
+        self.TreeFileView.ui.LoadResultsBut.clicked.connect(self.loadImages)
+        self.TreeFileView.ui.PlayButton.clicked.connect(self.TreeFileView.play)
+        self.TreeFileView.ui.StopButton.clicked.connect(self.TreeFileView.stop)
 
-        # class attributes that one might need at some points
-        # These attributes can be set via the reading of .npgrc or via a npc config file
-        # Experiments attributes
-        self.fileroot = None
-        self.filext = None
-        self.lcls_experiment = None
-        self.run = None
-        self.experiment = None
+        #Binding with ImgModel
+        self.ImgModel.updateImageView.connect(self.ImageView.setImg)
+        self.ImageView.ui.radioButton1.toggled.connect(self.onToggled)
+        self.ImageView.ui.radioButton2.toggled.connect(self.onToggled)
 
-        # General params
-        self.datapath = None
-        self.resultspath = None
-        self.darkpath = None
-        self.maskpath = None
-        self.cpus = None
-        self.outformats = {'hdf5': False, 'cctbx': False, 'cbf': False}
+        # Bindings with HF
+        self.HitFindingView.ui.PlayButton_2.clicked.connect(self.startNPC)
+        self.HitFindingView.ui.Stop.clicked.connect(self.stopNPC)
+        self.HitFindingView.ui.MaskPathBut.clicked.connect(lambda: self.openMask(openfn=True))
+        self.HitFindingView.ui.MaskDelBut.clicked.connect(self.deleteMask)
+        self.HitFindingView.setTable.connect(self.restoreRuns)
 
-        self.header = None
-        # HitFinder attributes
-        self.threshold = None
-        self.npixels = None
-        self.findbragg = None
-        self.braggthreshold = None
-        # Experimental attributes
-        self.detector = None
-        self.wl = None
-        self.distance = None
-        self.bx = None
-        self.by = None
 
-        # Qt filled circle as beam center
-        self.beam = None # 2D Circle
-        self.boost = 1
-        self.vmin = 0
-        self.vmax = 10
-        self.rootdir = os.getcwd()
+        #Bindings with Menu
+        self.menuBar.actionLoad_Images.triggered.connect(self.loadImages)
+        self.menuBar.actionLoad_Mask.triggered.connect(lambda: self.openMask(openfn=True))
+        self.menuBar.actionLoad_Geometry.triggered.connect(lambda: self.openGeometry(openfn=True))
+        self.menuBar.action_Clear.triggered.connect(self.TreeFileView.clearTree)
+        self.menuBar.actionDelete_Mask.triggered.connect(self.deleteMask)
+        self.menuBar.actionDelete_Geom.triggered.connect(self.deleteGeom)
+        self.menuBar.actionClose.triggered.connect(self.CloseAll)
 
-        self.bs = []
-        self.rings = []
-        self.ring_text = []
-        idx = self.ui.ColorMap.findText("Gray")
-        self.ui.ColorMap.setCurrentIndex(idx)
-        self.color = color_mapping[str(self.ui.ColorMap.currentText())]
-        self.peaks = None
-        self.ShowBraggs = False
+        self.menuBar.actionResolution_Rings.triggered.connect(self.toggleResRings)
+        self.menuBar.actionBeam_Center.triggered.connect(lambda: self.toggleBeamCenter(self.ImageView.view.beam))
 
-        if len(sys.argv) == 2:
-            f = sys.argv[1]
-            if os.path.isdir(f):
-                self.imgfact.append_object(sys.argv[1])
+        self.ViewMenuDict = { 'XP' : ('actionExperimental_Settings', self.XPView),
+                              'TreeFile': ('actionFile_Tree', self.TreeFileView),
+                              'HF' : ('actionHit_Finding', self.HitFindingView),
+                               'Runs' : ('actionRuns', self.Table)}
+        self.menuBar.actionExperimental_Settings.triggered.connect(lambda: self.toggleView('XP'))
+        self.menuBar.actionFile_Tree.triggered.connect(lambda: self.toggleView('TreeFile'))
+        self.menuBar.actionHit_Finding.triggered.connect(lambda: self.toggleView('HF'))
+        self.menuBar.actionRuns.triggered.connect(lambda: self.toggleView('Runs'))
+
+        QActionModes = [self.menuBar.actionOffImages,
+                        self.menuBar.actionStream]
+                        #self.menuBar.actionOnPort,
+                        #self.menuBar.actionOnEiger]
+
+        self.MenuModes = {'&Inspect Stream': 'OffStream',
+                          '&Display Images': 'OffImage',
+                          '&Listen a port': 'OnPort'}
+
+        #self.HitLiveView.raiseAll.connect(self.raiseAll)
+        self.XPView.raiseAll.connect(self.raiseAll)
+        self.ImageView.raiseAll.connect(self.raiseAll)
+        self.TreeFileView.raiseAll.connect(self.raiseAll)
+        self.Table.raiseAll.connect(self.raiseAll)
+        self.HitFindingView.raiseAll.connect(self.raiseAll)
+        self.views = [self.ImageView, self.XPView, self.Table, self.HitFindingView, self.TreeFileView]
+
+        for cnt, item in enumerate(QActionModes):
+            item.triggered.connect(self.switchingMode)
+
+    def raiseAll(self, s):
+        for view in self.views:
+            view.raise_()
+        view_clicked = getattr(self, str(s))
+        view_clicked.raise_()
+
+
+    def toggleView(self, key):
+        attr, view = self.ViewMenuDict[key]
+        if getattr(self.menuBar, attr).isChecked():
+            view.show()
+            view.visible = True
+        else:
+            view.hide()
+
+    def toggleBeamCenter(self, beam):
+            if beam.isVisible():
+                beam.hide()
             else:
-                self.imgfact.append_file(f)
+                if hasattr(self.ImgModel.data, 'shape'):
+                    beam.setPos(self.XPView.bx, self.XPView.by, self.binning)
+                    beam.show()
+                else:
+                    print("No data loaded")
+                    self.menuBar.actionBeam_Center.setChecked(False)
 
-    def growTree(self):
-        pass
-
-    def FileDropped(self, l):
-        for url in l:
-            if os.path.exists(url):
-                self.imgfact.append_object(url)
-
-    def updateBraggs(self):
-        if self.ShowBraggs:
-            self.ShowBraggs = False
-            self.ui.actionShow_Bragg_Peaks.setText("Show Bragg Peaks")
-            self.clean_peaks()
-        else:
-            self.ShowBraggs = True
-            self.ui.actionShow_Bragg_Peaks.setText("Hide Bragg Peaks")
-            if self.peaks is not None: self.display_peaks(self.peaks)
-
-    def updateBC(self):
-        if self.ShowBC:
-            self.ShowBC = False
-            self.ui.actionShow_Beam_Center.setText("Show Beam Center")
-            #self.view.removeItem(self.beam)
-            self.beam.hide()
-        else:
-            self.showBeamCenter()
-
-    def updateRings(self):
-        if self.ShowRings:
-            self.ShowRings = False
-            self.ui.actionShow_resolution_rings.setText("Show Resolution Rings")
-            for ring in self.rings: self.view.removeItem(ring)
-        else:
-            self.showResolutionRings()
-
-
-    def showBeamCenter(self):
-        if self.bx is not None and self.by is not None:
-            self.ShowBC = True
-            self.ui.actionShow_Beam_Center.setText("Hide Beam Center")
-            if self.beam is not None:
-                self.view.removeItem(self.beam)
-
-            self.beam = pg.QtGui.QGraphicsEllipseItem(float(self.bx)-20, float(self.by)-20, 40, 40)
-            self.beam.setBrush(pg.mkBrush(self.color))
-            self.view.addItem(self.beam)
-
-    def showResolutionRings(self):
-
-        if all(x is not None for x in [self.bx, self.by, self.distance, self.wl, self.psx, self.psy]):
-            self.ShowRings = True
-            self.ui.actionShow_resolution_rings.setText("Hide Resolution Rings")
-            if self.rings:
-                for item in self.rings:self.view.removeItem(item)
-                self.rings = []
-
-            max_radius = min(min(self.data.shape) - self.bx, min(self.data.shape) - self.by)
-            increment = max_radius / 4
-            for i in range(4):
-                radius =increment * (i + 1)
-                x = float(self.bx)- radius
-                y = float(self.by)- radius
-                ring = pg.QtGui.QGraphicsEllipseItem(x, y, radius * 2, radius * 2)
-                self.rings.append(ring)
-                ring.setPen(pg.mkPen(self.color, width=2, style=QtCore.Qt.SolidLine))
-                self.view.addItem(ring)
-                resolution = "%4.1f A"%float(self.getResolution(self.bx,self.by-radius))
-                ring_text = pg.TextItem(resolution, anchor=(0.5,0), color=self.color)
-                ring_text.setPos(x+radius,y)
-                self.ring_text.append(resolution)
-                self.rings.append(ring_text)
-                self.view.addItem(ring_text)
-
-        else:
-            self.ui.Log.appendPlainText("Please make sure that beam center, wavelength, distance and detector are properly provided.")
-            return
-
-    # Play - Stop Files
-    def play(self):
-        self.idx = 0
-        #self.PlotItem.setDownsampling(ds=4,mode='peak')
-        self.item = self.ui.treeWidget.currentItem()
-        self.playtimer.start()
-
-    def updateData(self):
-
-
-        #self.stop()
-        item = self.ui.treeWidget.itemBelow(self.item)
-
-        if item is not None:
-            self.item = item
-            if self.idx % 20 == 0: self.ui.treeWidget.setCurrentItem(item)
-            self.updateview()
-            self.idx += 1
-        else: self.stop()
-
-    def stop(self):
-        self.playtimer.stop()
-
-    def updateMax(self):
-        try:
-            self.vmax = int(self.ui.Max.text())
-            self.img.setLevels((self.vmin, self.vmax))
-        except ValueError:
-            print('Integer expected for the maximum cmap value... Try Again.')
-
-    def updateMin(self):
-        try:
-            self.vmin = int(self.ui.Min.text())
-            self.img.setLevels((self.vmin, self.vmax))
-        except ValueError:
-            print('Integer expected for the minimum cmap value... Try Again.')
-
-    def updateBoost(self):
-        try:
-            self.boost = int(self.ui.Boost.text())
-            self.img.setImage(self.data**self.boost)
-            self.img.setLevels((self.vmin,self.vmax))
-        except ValueError:
-            print('Integer expected for the boost value... Try Again.')
-
-    def updateCmap(self):
-        cmap = self.ui.ColorMap.currentText()
-        self.cmap = np.load(pkg.resource_filename('NPC','gui/cmaps/%s.npy'%cmap))
-        self.img.setLookupTable(self.cmap)
-        self.color = color_mapping[str(self.ui.ColorMap.currentText())]
-        if self.beam is not None: self.beam.setBrush(pg.mkBrush(self.color))
-        if self.bs:
-            for b in self.bs:
-                b.setPen(pg.mkPen(self.color, width=2, style=QtCore.Qt.SolidLine))
-
-        if self.rings:
-            i = 0
-            for ring in self.rings:
-                try:
-                    ring.setPen(pg.mkPen(self.color, width=2, style=QtCore.Qt.SolidLine))
-                except AttributeError:
-                    txt = self.ring_text[i]
-                    i += 1#txt = ring.toPlainText()
-                    ring.setText(txt, self.color)
-                    #ring.setDefaultTextColor(self.color)
-
-    def SetDetector(self):
-        det = self.ui.Detector.currentText()
-        sdet = str(det)
-        try:
-            self.detector = pyFAI.detectors.Detector.factory(str(det))
-        except:
-            self.detector = get_class("NPC.Detectors", str(det))()
-        self.psx = self.detector.pixel1
-        self.psy = self.detector.pixel2
-        print("Detector updated to %s" %str(det))
-
-    # Mouse interaction with the viewbox
-    def getIntensities(self, ev):
-        if ev.button() == QtCore.Qt.MidButton and self.view.sceneBoundingRect().contains(ev.pos()):
-            x = self.cursorx
-            y = self.cursory
-            try:
-                xmax , ymax = self.data.shape
-                if self.cursorx > 0 and self.cursory > 0 and self.cursorx < xmax and self.cursory < ymax:
-                    data = self.data[x-10:x+9,y-10:y+9].T
-                    s= ''
-                    for i in range(0,19):
-                        s = s + '\n' + ''.join(['%6i' % member for member in data[-(i+1),:]])
-                    self.popup_int.ui.textEdit.setText("%s"%s)
-                    if not self.popup_int.isVisible(): self.popup_int.show()
-                    self.popup_int.setWindowState(self.popup_int.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
-                    # this will activate the window
-                    self.popup_int.activateWindow()
-            except AttributeError: print('No data loaded yet')
-
-    def mouseMoved(self, evt):
-        pos = evt[0]  ## using signal proxy turns original arguments into a tuple
-        if self.view.sceneBoundingRect().contains(pos):
-            mousePoint = self.view.mapSceneToView(pos)
-            self.cursorx = int(mousePoint.x())
-            self.cursory = int(mousePoint.y())
-            try:
-                xmax, ymax = self.data.shape
-                if self.cursorx > 0 and self.cursory > 0 and self.cursorx < xmax and self.cursory < ymax:
-                    res = self.getResolution(self.cursorx, self.cursory)
-                    self.PlotItem.setTitle("<span style='font-size: 12pt'>x %4i -- y %4i" %(self.cursorx, self.cursory) + '&nbsp;'*15 + "<span style='color: red'>Res: %s </span>"%res)
-                    # self.PlotItem.hideAxis('top')
-                    # self.PlotItem.showLabel('top')
-            except AttributeError:
-                self.PlotItem.setTitle("<span style='font-size: 12pt'>x      -- y     </span>"+ '&nbsp;'*15 + "<span style='color: red'>Res:</span>" )
-
-    def updateTree(self):
-        self.item = self.ui.treeWidget.currentItem()
-        N = str(self.item.text(1))
-        if N == 'tba':
-            self.imgfact.construct_tree_h5(str(self.item.text(0)), self.item)
-            if str(self.item.text(1)) == '1': self.updateview()
-        elif int(self.item.childCount()) != 0 :
-
-            return
-        else: self.updateview()
-
-    def updateview(self):
-        if self.item == None:
-            self.item = self.ui.treeWidget.currentItem()
-        if str(self.item.text(0)) in self.imgfact.filenames_dic.keys():
-            fn = self.imgfact.filenames_dic[str(self.item.text(0))]
-            if os.path.exists(fn):
-                try :
-                    header, self.data = self.imgfact.openframe(fn)
-                except TypeError: return
-        else:
-            try:
-                path, index = str(self.item.text(0)).split()
-                parent= self.item.parent()
-                fn = self.imgfact.filenames_dic[str(parent.text(0))]
-                if not os.path.isfile(fn):
-                    parent2 = parent.parent()
-                    fn = self.imgfact.filenames_dic[str(parent2.text(0))]#path = str(parent.text(0))
-                header, self.data =self.imgfact.openframe(str(fn), path=path, index=int(index))
-            except ValueError: return
-             
-        if self.geom is not None:
-            self.data = reconstruct(self.data,self.geom)
-        if header is not None and header != self.header:
-            self.header = header
-            xp_settings = Headers.readheader(header, str(fn))
-            self.set_xpsetup(xp_settings)
-        if self.data is not None:
-            self.display_pattern()
-            self.clean_peaks()
-            self.peaks = None
-
-    def display_pattern(self):
-        self.img.setImage(self.data.astype(np.float32)**self.boost,levels=(self.vmin,self.vmax))
-
-    # ----------------------------------------------------------------------
-    def display_peaks(self, peaks, color='b', radius=5, thickness=0):
-        for peak in peaks:
-            x, y = peak[1], peak[0]
-            brag = pg.QtGui.QGraphicsEllipseItem(x-radius, y-radius, radius * 2, radius * 2)
-            brag.setPen(pg.mkPen(self.color, width=2, style=QtCore.Qt.SolidLine))
-            self.bs.append(brag)
-            self.view.addItem(brag)
-
-    # ----------------------------------------------------------------------
-    def clean_peaks(self):
-        """ Remove any circle around Bragg peaks
-        """
-        for bs in self.bs:
-            self.view.removeItem(bs)
-        self.bs = []
-
-    # ----------------------------------------------------------------------
-    def find_braggs(self, threshold_obj):
-        """ Find Position of Bragg peaks in the img
-	    and display it on screen  Should use the Braggs module"""
-        try:
-            threshold = float(threshold_obj.text())
-        except ValueError:
-            self.ui.Log.appendPlainText("Bad input - Please check the value of Bragg Threshold parameter -")
-            return
-
-        if self.data is not None:
-            data = self.data.astype(np.int32)
-            N = np.count_nonzero(data > threshold)
-            if N > self.MaxOverThreshold:
-                self.ui.Log.appendPlainText("Bragg search aborted... A threshold value of %i does not seem appropriate for this pattern."%threshold)
-                if self.filename_cache != self.imgfact.filename:
-                    self.max_t = np.sort(data, axis=None)[-self.MaxBraggs]
-                    self.filename_cache = self.imgfact.filename
-                self.ui.Log.appendPlainText("Bragg search will be allowed for threshold values equal to or above %i for this pattern."%self.max_t)
-                return
-            self.peaks = pf.local_maxima(data, 3, 3, threshold)
-            self.clean_peaks()
-            num_braggs = len(self.peaks)
-
-            if num_braggs > self.MaxBraggs:
-                self.ui.Log.appendPlainText("Too many Bragg peaks have been found to be displayed (%i). Please consider adjusting your threshold.\n"%len(self.peaks))
+    def toggleResRings(self):
+        if self.ImageView.setResRingsPosition():
+            if self.ImageView.view.rings[0].isVisible():
+                for r in self.ImageView.view.rings: r.hide()
+                for txt in self.ImageView.view.ringsTxt: txt.hide()
             else:
-                self.ui.Log.appendPlainText(
-                    "Found %4i Bragg peaks in file %s (threshold of %i)" % (num_braggs, self.imgfact.filename, threshold))
-                self.display_peaks(self.peaks)
-                self.ShowBraggs = True
-                self.ui.actionShow_Bragg_Peaks.setText("Hide Bragg Peaks")
+                for r in self.ImageView.view.rings: r.show()
+                for txt in self.ImageView.view.ringsTxt: txt.show()
+        else:
+            self.menuBar.actionResolution_Rings.setChecked(False)
+
+    def startNPC(self):
+        NPC_parameters = {
+             'detector': 'Eiger4M',
+             'experiment': 'SSX',
+             'detector_distance': 100,
+             'beam_x': 502,
+             'beam_y': 515,
+             'wavelength': 0.832,
+             'num': str(int(self.nRun)+1),
+             'HitFile': None,
+             'live': False,
+        }
+        extraARGS = self.HitFindingView.getAllParameters()
+        NPC_parameters.update(extraARGS)
+        self.nRun += 1
+        NPC_parameters['num'] = str(self.nRun)
+        results = os.path.join(NPC_parameters['output_directory'], 'NPC_run%s' % NPC_parameters['num'].zfill(3))
+        NPC_parameters['json_file'] = os.path.join(results, '.NPC_params.json')
+        NPC_parameters['currentRow'] = self.Table.currentRow
+
+        self.Table.addRow(self.nRun, Done=False)
+
+        if not self.running:
+            self.runNPC(NPC_parameters)
+            self.running.append(NPC_parameters)
+        else:
+            self.waitingDic[str(self.nRun)] = NPC_parameters
+            self.waitingList.append(str(self.nRun))
+        #shutil.copyfile(config_file, os.path.join(options['output_directory'], 'NPC_run%s' % options['num'].zfill(3),
+        #                                          os.path.basename(config_file)))
+
+    def runNPC(self, params):
+        utils.create_results_folders(params)
+        self.nRow = params['currentRow']
+        self.ImgModel.IO.shutDown()
+        self.NPCRun = NPCThread(params)
+        self.Table.setActiveRow(self.nRow)
+        self.Table.stopButton.setEnabled(True)
+        self.NPCRun.stop.connect(self.stopNPC)
+        self.Table.Delete.setDisabled(True)
+        self.NPCRun.start()
+        self.NPGPuller.start()
+
+    def stopNPCviaTable(self, row):
+        print(row, self.nRow)
+        if row == self.nRow:
+            self.stopNPC(fromThread=False)
+
+    def stopNPC(self, fromThread=True):
+            import time
+            if not fromThread:
+                self.NPCRun.stop.disconnect(self.stopNPC)
+                for worker in self.NPCRun.Process.consumers:
+                    worker.shutDown()
+                    worker.join()
+                self.NPCRun.Process.shutDown()
+
+            self.Table.stopButton.setDisabled(True)
+            self.Table.Delete.setEnabled(True)
+            self.ImgModel.IO.shutDown()
+            self.NPGPuller.stop()
+            self.NPCRun.quit()
 
 
-    def set_xpsetup(self, xp_settings):
+            #self.disconnectOnPort()
+            self.Table.Results.setEnabled(True)
+            if self.waitingList:
+                key = self.waitingList[0]
+                self.running.append(key)
+                self.waitingList.pop(0)
+                params = self.waitingDic[key]
+                del self.waitingDic[key]
+                self.runNPC(params)
+            if self.running:
+                self.running.pop(0)
+
+    def deleteFolder(self, run):
+        path = os.path.expanduser(
+            str(self.HitFindingView.ui.ResultsPath.text()))  # "~toto" -> "/home/toto" "C:\User\toto"
+        path = os.path.expandvars(path)  # "/xxx/$MACHIN/yyy" -> "/xxx/valeur_machin/yyy"
+        path = os.path.realpath(path)  # "/x/y/../z" -> "/x/z"
+        key = str(run).lstrip("0")
+        if int(run) == self.nRun: self.nRun -= 1
+        if key in self.waitingDic.keys():
+            print("Deleting key: %s"%key)
+            del self.waitingDic[key]
+            self.waitingList.remove(key)
+            for run in self.waitingList:
+                if run > key:
+                    self.waitingDic[run]['currentRow'] -= 1
+
+        else:
+            self.nRow -= 1
+            self.Table.setActiveRow(self.nRow)
+            for run in self.waitingList:
+                self.waitingDic[run]['currentRow'] -= 1
+
         try:
-            distance, psx, psy, wl, by, bx, detector_name = xp_settings
-        except:
-            return
-        if self.bx != bx or self.by != by:
-            self.bx = float(bx)
-            self.by = float(by)
-        if self.distance != distance:
-            self.distance = float(distance)
-        if self.wl != wl:
-            self.wl = float(wl)
-            self.detector = pyFAI.detectors.Detector.factory(detector_name)
-            self.psx = self.detector.pixel1
-            self.psy = self.detector.pixel2
-            if self.ShowBC:
-                self.showBeamCenter()
-            if self.ShowRings:
-                self.showResolutionRings()
-            self.ui.distance.setText(distance.strip())
-            self.ui.Wavelength.setText(wl.strip())
-            self.ui.beamX.setText(bx.strip())
-            self.ui.beamY.setText(by.strip())
-            index = self.ui.Detector.findText(detector_name)
-            self.ui.Detector.setCurrentIndex(index)
+            shutil.rmtree(os.path.join(path, 'NPC_run%s' % run))
+        except OSError:
+            pass
 
-    def getResolution(self, x, y):
+    def LoadResults(self, run):
+        path = os.path.expanduser(str(self.HitFindingView.ui.ResultsPath.text()))  # "~toto" -> "/home/toto" "C:\User\toto"
+        path = os.path.expandvars(path)  # "/xxx/$MACHIN/yyy" -> "/xxx/valeur_machin/yyy"
+        path = os.path.realpath(path)  # "/x/y/../z" -> "/x/z"
         try:
-            dx = x - self.bx
-            dy = y - self.by
-            dx *=  self.psx
-            dy *=  self.psy
-            radius = np.sqrt(dx ** 2 + dy ** 2)
-            theta = 0.5 * np.arctan((radius) / (self.distance / 1000))
-            return '%4.2f ' %(self.wl / (2. * np.sin(theta)))
-        except:
-            return 'nan'
+            json_file = os.path.join(path, 'NPC_run%s' % run, '.NPC_params.json')
+            options = json.loads(open(json_file).read())
+            root = options['filename_root']
+            txt = os.path.join(path, 'NPC_run%s' % run, '%s_%s.txt' % (root, run))
+            self.TreeFileView.treeFactory.append_file(txt)#run_hits(txt)
+            self.TreeFileView.setVisible(True)
+        except IOError:
+            print("Sorry, cannot load Results from ...")
 
-    def loadGeom(self):
-        path = QtGui.QFileDialog.getOpenFileName(
-                       self,
-                       "Select a CrystFEL geometry file",
-                       '/Users/nico/PycharmProjects/npg_qt')
-        if path:
-            filename = str(path)
-            if os.path.exists(filename):
-                self.geom = parse_geom_file(filename)
-                if self.data is not None:
-                    self.data = reconstruct(self.data, self.geom)
-                    self.display_pattern()
-
-    def getDataPath(self):
-        return self.ui.DataPath.text()
-
-    def getResultsPath(self):
-        return self.ui.ResultsPath.text()
-
-    def getDarkPath(self):
-        return self.ui.DarkPath.text()
-
-    def getMaskPath(self):
-        return self.ui.MaskPath.text()
-
-    def getCpus(self):
-        try:
-            return int(self.ui.cpus.text())
-        except ValueError:
-            print('Integer expected for the number of cpus... Try Again.')
-            return None
-
-    def getOutFormats(self):
-        self.outformats['hdf5'] = self.ui.hdf5out.isChecked()
-        self.outformats['cctbx'] = self.ui.cctbxout.isChecked()
-        self.outformats['cbf'] = self.ui.cbfout.isChecked()
-
-    def getPath(self, var):
-        d = QtGui.QFileDialog.getExistingDirectory(
-                       self,
-                       "Open a folder",
+    def loadImages(self):
+        if self.TreeFileView.isHidden():
+            self.menuBar.actionFile_Tree.trigger()
+        path = QtGui.QFileDialog.getExistingDirectory(
+                       None,
+                       "Select a folder",
                        self.cwd,
-                       QtGui.QFileDialog.ShowDirsOnly)
-        var.setText(d)
-        self.cwd=d
+            QtGui.QFileDialog.DontUseNativeDialog | QtGui.QFileDialog.ShowDirsOnly)
+        if path:
+            self.cwd=path
+            self.TreeFileView.clearTree()
+            self.TreeFileView.treeFactory.run(str(path))
 
-    def getFile(self, var):
+    def loadStream(self):
+        self.streamFile = str(self.getFile())
+        if self.streamFile:
+            self.cwd = os.path.split(self.streamFile)[0]
+            os.chdir(self.cwd)
+            self.parseStream(self.streamFile)
+
+    def parseStream(self, streamfn):
+        mainThread = QtCore.QThread.currentThread()
+        self.stream = CStream(streamfn, mainThread)
+        self.stream.update.connect(self.TreeFileView.testing)
+        self.stream.info.connect(self.infoStream)
+        self.stream.sendGEOM.connect(self.ImgModel.updateStreamGeom)
+        self.ImageView.ui.Geom.setText("Current Geometry File from stream:  %s" % streamfn)
+        self.objThread = QtCore.QThread()
+        self.stream.moveToThread(self.objThread)
+        self.stream.finished.connect(self.parsedStream)
+        self.objThread.started.connect(self.stream.parse_stream)
+        self.ImageView.ui.radioButton1.setDisabled(True)
+        self.ImageView.ui.radioButton2.setDisabled(True)
+        self.TreeFileView.ui.LoadResultsBut.setDisabled(True)
+        self.objThread.start()
+
+    def parsedStream(self):
+        self.objThread.quit()
+        self.ImageView.ui.radioButton1.setDisabled(False)
+        self.ImageView.ui.radioButton2.setDisabled(False)
+        self.TreeFileView.ui.LoadResultsBut.setDisabled(False)
+        self.ImageView.ui.Nfiles.setText("%s frames, %s crystals" % (len(self.stream.filenames), len(self.stream.indexed)))
+
+    def infoStream(self, info):
+        nimages, ncrystals = info
+        self.ImageView.ui.Nfiles.setText("Parsing stream: %s frames, %s crystals" % (nimages, ncrystals))
+
+    def onToggled(self):
+        self.TreeFileView.showIndexed = self.ImageView.ui.radioButton2.isChecked()
+        try:
+            self.TreeFileView.testing((self.stream.filenames,self.stream.indexed), clear=True)
+        except AttributeError:
+            pass
+
+    def OnIntegratedPeaks(self):
+        if self.integrated is not None:
+            if self.ui.InetgratedPeaks.isChecked():
+                self.IntegratedPlot.setData(self.integratedPeaks[0],self.integratedPeaks[1])
+                self.DetectedPlot.setBrush(self.brush1)
+            else:
+                self.IntegratedPlot.setData([])
+                self.DetectedPlot.setBrush(self.brush0)
+        if self.ui.DetectedPeaks.isChecked():
+            self.DetectedPlot.clear()
+            self.DetectedPlot.setData(self.detectedPeaks[0],self.detectedPeaks[1])
+
+    def OnDetectedPeaks(self):
+        if self.peaks is not None:
+            if self.ui.DetectedPeaks.isChecked():
+                if self.ui.InetgratedPeaks.isChecked():
+                    self.DetectedPlot.setBrush(self.brush1)
+                self.DetectedPlot.setData(self.detectedPeaks[0], self.detectedPeaks[1])
+            else:
+                self.DetectedPlot.setData([])
+
+    def openMask(self,openfn=True):
+        if openfn :
+            self.maskFile = str(self.getFile())
+        if self.maskFile:
+            self.ImgModel.updateMask(self.maskFile)
+            dim1, dim2 = self.ImgModel.mask.shape
+            self.ImageView.ui.Mask.setText(
+                "Current Mask File:  %s - Shape: %5i x %5i" % (self.maskFile, dim1, dim2))
+            self.HitFindingView.ui.MaskPath.setText(self.maskFile)
+
+    def openGeometry(self, openfn=True):
+        if openfn:
+            self.geomFile = str(self.getFile())
+        if self.geomFile:
+            self.ImageView.ui.Geom.setText("Current Geometry File:  %s" % self.geomFile)
+            self.ImgModel.updateGeom(self.geomFile)
+
+    def getFile(self, var=None):
+        print("Called")
         d = QtGui.QFileDialog.getOpenFileName(
-            self,
-            "Select a File",
-            self.cwd
+                None,
+                "Select a File",
+                self.cwd
         )
-        var.setText(d[0])
+        #print d
+        if var is not None:
+            var.setText(d[0])
+        return d
 
-    def getThreshold(self):
+    def deleteMask(self):
+        self.maskFile = ""
+        self.ImgModel.loadedMask = False
+        self.ImageView.ui.Mask.setText("Current Mask File:  N/A")
+        self.HitFindingView.ui.MaskPath.setText("")
+
+    def deleteGeom(self):
+        self.geomFile = ""
+        self.ImgModel.loadedGeom = False
+        self.ImageView.ui.Geom.setText("Current Geom File:  N/A")
+
+    def CloseAll(self, evt):
+        self.saveState()
+        for view in [self.XPView, self.TreeFileView, self.HitFindingView]:
+            view.close()
+        self.app.quit()
+
+    def restoreState(self):
+        geoms = ['geometry_XPView', 'geometry_ImageView', 'geometry_Tree', 'geometry_HF', 'geometry_Table']
+        visStates = ['visible_XPView', 'visible_ImageView', 'visible_Tree', 'visible_HF', 'visible_Table']
+        views = [self.XPView, self.ImageView, self.TreeFileView, self.HitFindingView, self.Table]
+        menus = [self.menuBar.actionExperimental_Settings, None, self.menuBar.actionFile_Tree, self.menuBar.actionHit_Finding, self.menuBar.actionRuns]# , self.TreeFileView, self.HitFindingView]
+        for i in range(len(views)):
+            view = views[i]
+
+            # Restore geomtry
+            geometry = self.settings.value(geoms[i], '')
+
+            try:
+                # Python 2
+                view.restoreGeometry(geometry.toByteArray())
+                # Python 3
+            except AttributeError: view.restoreGeometry(geometry)
+            # Restore state (Visble or not)
+            try:
+                vis = self.settings.value(visStates[i],True).toBool()
+            except AttributeError:
+                vis = self.settings.value(visStates[i], True)
+
+            view.setVisible(vis)
+            view.visible = vis
+
+            # Restore menu state
+            menu = menus[i]
+            if menu is not None:
+                menu.setChecked(vis)
+
+            for name, obj in inspect.getmembers(view.ui):
+                if isinstance(obj, QtGui.QComboBox):
+                    index = obj.currentIndex()  # get current region from combobox
+                    name = obj.objectName()
+                    try: value = str(self.settings.value(name).toString())
+                    except AttributeError: value = str(self.settings.value(name))
+                    if value == "":
+                        continue
+
+                    index = obj.findText(value)  # get the corresponding index for specified string in combobox
+
+                    if index == -1:  # add to list if not found
+                        obj.insertItems(0, [value])
+                        index = obj.findText(value)
+                        obj.setCurrentIndex(index)
+                    else:
+                        obj.setCurrentIndex(index)  # preselect a combobox value by index
+
+                if isinstance(obj, QtGui.QLineEdit):
+                    name = obj.objectName()
+                    try:
+                        value = self.settings.value(name).toString()  # get stored value from registry
+                    except AttributeError:
+                        value = self.settings.value(name)  # get stored value from registry
+                    try:
+                        obj.setText(value)  # restore lineEditFile
+                    except TypeError:
+                        continue
+                if isinstance(obj, QtGui.QCheckBox):
+                    name = obj.objectName()
+                    try:
+                        value = self.settings.value(name).toBool()  # get stored value from registry
+                    except AttributeError:
+                        value = self.settings.value(name)
+                      # get stored value from registry
+                    if value != None:
+                        obj.setChecked(value)  # restore checkbox
+
+                if isinstance(obj, QtGui.QRadioButton):
+                    name = obj.objectName()
+                    try:
+                        value = self.settings.value(name).toBool()  # get stored value from registry
+                    except AttributeError:
+                        value = self.settings.value(name)
+
+                    try:
+                        if value != None:
+                            obj.setCheckState(value)
+                    except: pass
+
+        # Do not forget to restore the object attributes to the widget values.
+        self.ImageView.setAttr()
+        self.XPView.setupData()
+
+        #Restore Extra Settings
         try:
-            return float(self.ui.Threshold.text())
-        except ValueError:
-            print('Integer expected for the threshold... Try Again.')
-            return None
-
-    def getBraggSearch(self):
-        s = str(self.ui.FindBragg.currentText())
-        return s.strip().lower() == 'true'
-
-    def getBraggThreshold(self):
+            self.TreeFileView.treeFactory.restoreTree(self.settings.value("Tree", {}).toPyObject())
+        except:
+            self.TreeFileView.treeFactory.restoreTree(self.settings.value("Tree", {}))
         try:
-            return int(self.ui.BraggThreshold.text())
-        except ValueError:
-            print('Integer expected for the bragg threshold... Try Again.')
-            return None
+            self.maskFile = str(self.settings.value("Mask","").toString())
 
-    def getDetectorName(self):
-        return str(self.ui.Detector.currentText())
+        except AttributeError:
+            self.maskFile = self.settings.value("Mask", "")
 
-    def getWavelength(self):
+        if self.maskFile:
+            try:
+                self.openMask(openfn=False)
+            except:
+                print("Error loading mask: %s" %self.maskFile)
         try:
-            return float(self.ui.Wavelength.text())
-        except ValueError:
-            print('Float expected for the wavelength... Try Again.')
-            return None
+            self.geomFile = str(self.settings.value("Geometry","").toString())
+        except AttributeError:
+            self.geomFile = str(self.settings.value("Geometry", ""))
 
-    def setWavelength(self):
-        self.wl = self.getWavelength()
-        if self.ShowRings: self.showResolutionRings()
-        print("Wavelength is now %6.3f Angstrom" %self.wl)
 
-    # @check_float
-    def getDistance(self):
-        try:
-            return float(self.ui.distance.text())
-        except ValueError:
-            print('Float expected for the distance... Try Again.')
-            return None
+        #if self.geomFile:
+        #    self.openGeometry(openfn=False)
 
-    def setDistance(self):
-        self.distance = self.getDistance()
-        if self.ShowRings: self.showResolutionRings()
-        print("Distance now is %i mm" %self.distance)
+    def saveState(self):
+        geoms = ['geometry_XPView', 'geometry_ImageView', 'geometry_Tree', 'geometry_HF', 'geometry_Table']
+        visStates = ['visible_XPView', 'visible_ImageView', 'visible_Tree', 'visible_HF', 'visible_Table']
+        views = [self.XPView, self.ImageView, self.TreeFileView, self.HitFindingView, self.Table]
 
-    def getBeam(self):
-        try:
-            bx = float(self.ui.beamX.text())
-            by = float(self.ui.beamY.text())
-            return bx, by
-        except ValueError:
-            print('Numbers expected for the beam center... Try Again.')
-            return None, None
+        self.settings.setValue("Tree",self.TreeFileView.treeFactory.filenames_dic)
+        self.settings.setValue("Mask", self.maskFile)
+        self.settings.setValue("Geometry", self.geomFile)
 
-    def getBeamX(self):
-        try:
-            return float(self.ui.beamX.text())
-        except ValueError:
-            print('Numbers expected for the beam center... Try Again.')
-            return None
+        for i  in range(len(views)):
+            view = views[i]
+            geom = geoms[i]
+            vis = visStates[i]
+            self.settings.setValue(geom, view.saveGeometry())
+            self.settings.setValue(vis, view.visible)
 
-    def getBeamY(self):
-        try:
-            return float(self.ui.beamY.text())
-        except ValueError:
-            print('Numbers expected for the beam center... Try Again.')
-            return None
+            for name, obj in inspect.getmembers(view.ui):
+                # if type(obj) is QComboBox:  # this works similar to isinstance, but missed some field... not sure why?
+                if isinstance(obj, QtGui.QComboBox):
+                    name = obj.objectName()  # get combobox name
+                    index = obj.currentIndex()  # get current index from combobox
+                    text = obj.itemText(index)  # get the text for current index
+                    self.settings.setValue(name, text)  # save combobox selection to registry
 
-    def setBeamX(self):
-        self.bx = self.getBeamX()
-        print("Beam center X is now %6.2f pixels" %self.bx)
-        if self.ShowBC :self.showBeamCenter()
-        if self.ShowRings: self.showResolutionRings()
+                if isinstance(obj, QtGui.QLineEdit):
+                    name = obj.objectName()
+                    value = obj.text()
+                    self.settings.setValue(name, value)  # save ui values, so they can be restored next time
 
-    def setBeamY(self):
-        self.by = self.getBeamY()
-        print("Beam center Y is now %6.2f pixels" %self.by)
-        if self.ShowBC: self.showBeamCenter()
-        if self.ShowRings: self.showResolutionRings()
+                if isinstance(obj, QtGui.QCheckBox):
+                    name = obj.objectName()
+                    state = obj.isChecked()
+                    self.settings.setValue(name, state)
 
-    def getThemAll(self):
-        idx = self.ui.ExperimentTabWidget.currentIndex()
-        self.getTabContent(idx)
-        self.getDataPath()
-        self.getResultsPath()
-        self.getDarkPath()
-        self.getMaskPath()
-        self.getOutFormats()
+                if isinstance(obj, QtGui.QRadioButton):
+                    name = obj.objectName()
+                    value = obj.isChecked()  # get stored value from registry
+                    self.settings.setValue(name, value)
 
-    def setThemAll(self):
+    def switchingMode(self):
+        print("Switching Off Current Mode: %s" % self.currentMode)
+        s = 'disconnect' + self.currentMode
+        call = getattr(self, s)
+        call()
+
+        MenuHandle = str(self.menuBar.sender().text())
+        self.currentMode = self.MenuModes[MenuHandle]
+        s = 'connect' + self.currentMode
+        call = getattr(self, s)
+        call()
+
+    def disconnectOffStream(self):
+        self.TreeFileView.ui.treeWidget.clear()
+        self.ImageView.ui.Stream.hide()
+        self.TreeFileView.ui.LoadResultsBut.setText("Load Images")
+        self.menuBar.actionLoad_Images.setText("Load Images")
+        self.menuBar.actionLoad_Images.triggered.connect(self.loadImages)
+        self.menuBar.actionLoad_Images.triggered.disconnect(self.loadStream)
+        self.TreeFileView.ui.LoadResultsBut.clicked.connect(self.loadImages)
+        self.TreeFileView.ui.LoadResultsBut.clicked.connect(self.loadStream)
+
+    def disconnectOffImage(self):
+        # Clear the tree (could be saved in cache....)
+        self.TreeFileView.ui.treeWidget.clear()
+
+    def disconnectOnPort(self):
+        self.ImgModel.ZMQPull.close()
+        self.ImgModel.socketTimer.stop()
+
+    def connectOffImage(self):
+        self.menuBar.actionFile_Tree.setEnabled(True)
+        self.TreeFileView.setVisible(self.TreeFileView.visible)
+        self.menuBar.actionHit_Finding.setEnabled(True)
+        self.HitFindingView.setVisible(self.HitFindingView.visible)
+
+    def connectOffStream(self):
+        print("Switching NPG to Offline Stream Mode")
+        # Show the Widget and update the correct bindings
+        self.ImageView.ui.Stream.show()
+        self.TreeFileView.ui.LoadResultsBut.setText("Load Stream")
+        self.menuBar.actionLoad_Images.setText("Load Stream")
+        self.menuBar.actionLoad_Images.triggered.disconnect(self.loadImages)
+        self.menuBar.actionLoad_Images.triggered.connect(self.loadStream)
+        self.TreeFileView.ui.LoadResultsBut.clicked.disconnect(self.loadImages)
+        self.TreeFileView.ui.LoadResultsBut.clicked.connect(self.loadStream)
+        # Update possible toggled widgets
+        # Here ok for tree but not HF - always ok for XP
+        self.menuBar.actionFile_Tree.setEnabled(True)
+        self.menuBar.actionHit_Finding.setEnabled(False)
+        if self.HitFindingView.isVisible():
+            self.HitFindingView.hide()
+
+    def connectOnPort(self):
+        self.port = 5556
+        self.host = 'localhost'
+        print("Switching to online mode - listening to port %s from %s" % (str(self.port),self.host))
+        if self.TreeFileView.isVisible():
+                self.TreeFileView.hide()
+        if self.HitFindingView.isVisible():
+            self.HitFindingView.hide()
+        self.menuBar.actionFile_Tree.setEnabled(False)
+        self.menuBar.actionHit_Finding.setEnabled(False)
+        self.ImgModel.startZMQPull(self.host, self.port)
+
+    def connectOnEiger(self):
         pass
 
-    def closeEvent(self, QCloseEvent):
-        self.view.Roiwin.close()
-        self.popup_int.close()
-        self.close()
+    def restoreRuns(self):
+        d = os.path.realpath(str(self.HitFindingView.ui.ResultsPath.text()))
+        dirs = sorted(glob.glob(os.path.join(d,'NPC_run*')))
+        self.nRun, self.nRow = self.Table.restoreRows(dirs)
 
-if __name__ == "__main__":
 
-    app = QtGui.QApplication(sys.argv)
-    start = time()
+if __name__ == '__main__':
+    import sys
 
-    fn = pkg.resource_filename('NPC','bitmaps/NPC.png')
-
-    splash_pix = QtGui.QPixmap(fn)
-    splash = QtGui.QSplashScreen(splash_pix)
-    splash.setMask(splash_pix.mask())
-    splash.show()
-    splash.raise_()
-    while time() - start < 2:
-        sleep(0.1)
-        app.processEvents()
-
-    myapp = NPG(app)
-    splash.finish(myapp)
-    myapp.show()
-    myapp.raise_()
+    myapp = NPGController(app)
     sys.exit(app.exec_())
