@@ -327,7 +327,7 @@ class NPGViewBox(CustomViewBox):
         self.roi.hide()
         self.addItem(self.roi)
         # TODO: Change to the pkg path (see old npg)
-        self.cmaps = [np.load(pkg.resource_filename('NPC','gui/cmaps/%s.npy')%self.parent.ui.ColorMap.itemText(i)) for i in range(self.parent.ui.ColorMap.count())]
+        self.cmaps = [np.load(pkg.resource_filename('NPC','gui/cmaps/%s.npy'%self.parent.ui.ColorMap.itemText(i))) for i in range(self.parent.ui.ColorMap.count())]
         #self.autoRange(items=[self.img])
 
     def resetZoom(self):
