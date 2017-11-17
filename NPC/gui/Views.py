@@ -8,11 +8,11 @@ from PyQt4.QtCore import pyqtSignal
 from PyQt4.QtGui import QMainWindow, QWidget, QIcon, QColor, QFileDialog, QCloseEvent
 from pyqtgraph import functions as fn
 from pyqtgraph.graphicsItems.ROI import Handle as pgHandle
-from Frame import TreeFactory
-from ui import MainWindow_NoMenu_ui as MainWindow_ui, FileTree_ui, XP_Params_ui, HitFinding_ui, LiveHF, Runs_ui
+from NPC.gui.Frame import TreeFactory
+from NPC.gui.ui import MainWindow_NoMenu_ui as MainWindow_ui, FileTree_ui, XP_Params_ui, HitFinding_ui, LiveHF, Runs_ui
 from PyQt4 import QtGui, QtCore
-from ui import Runs_ui
 import os, json, time
+import pkg_resources as pkg
 from datetime import datetime
 
 
@@ -327,7 +327,7 @@ class NPGViewBox(CustomViewBox):
         self.roi.hide()
         self.addItem(self.roi)
         # TODO: Change to the pkg path (see old npg)
-        self.cmaps = [np.load('./cmaps/%s.npy'%self.parent.ui.ColorMap.itemText(i)) for i in range(self.parent.ui.ColorMap.count())]
+        self.cmaps = [np.load(pkg.resource_filename('NPC','gui/cmaps/%s.npy')%self.parent.ui.ColorMap.itemText(i)) for i in range(self.parent.ui.ColorMap.count())]
         #self.autoRange(items=[self.img])
 
     def resetZoom(self):
@@ -467,7 +467,7 @@ class ImageView(QMainWindow):
         if self.binning != 1:
             self.data = self.rebin(data)
         else: self.data = data
-        self.view.img.setImage(self.data, levels=(self.vmin, self.vmax))
+        self.view.img.setImage(self.data.astype(np.float64), levels=(self.vmin, self.vmax))
 
     def setLevels(self):
         try:
@@ -512,7 +512,7 @@ class ImageView(QMainWindow):
                              self.shape[1] - self.XPView.by,
                              self.XPView.bx,
                              self.XPView.by)
-            print max_radius
+            #print max_radius
             #print(self.XPView.bx, self.XPView.by, max_radius, self.shape[1], self.shape[0])
             increment = max_radius / (4. * self.binning)
             for i in range(4):
@@ -896,7 +896,6 @@ class TableWidget(NPGWidget):
         self.currentRow = 0
         self.font = QtGui.QFont()
         self.font.setFamily('.NS FS Text')
-        os
         self.font.setPointSize(11)
         # Debug
         #self.show()
@@ -909,17 +908,17 @@ class TableWidget(NPGWidget):
         Nhits = self.addItem()
         hitRate = self.addItem()
         resultsButton = self.addPushButton(label='Load Hits', icon=None)
-        deleteButton = self.addPushButton("", icon='./icons/waste-bin.svg')
+        deleteButton = self.addPushButton("", icon=pkg.resource_filename('NPC','gui/icons/waste-bin.svg'))
         if Done:
             pBar = self.addItem()
             self.ui.tableWidget.setItem(self.currentRow, 3, pBar)
-            stopButton = self.addPushButton("", icon='./icons/Delete.png', enabled=False)
+            stopButton = self.addPushButton("", icon=pkg.resource_filename('NPC','gui/icons/Delete.png'), enabled=False)
 
         else:
             pBar = NPGprogressBar()
             self.ui.tableWidget.setCellWidget(self.currentRow, 3, pBar)
             resultsButton.setDisabled(True)
-            stopButton = self.addPushButton("", icon='./icons/Delete.png', enabled=False)
+            stopButton = self.addPushButton("", icon=pkg.resource_filename('NPC','gui/icons/Delete.png'), enabled=False)
 
         self.ui.tableWidget.setItem(self.currentRow, 0, Nevents)
         self.ui.tableWidget.setItem(self.currentRow, 1, Nhits)
@@ -1072,11 +1071,11 @@ class HitFindingView(NPGWidget):
                     'bragg_search': self.getBraggSearch,
                     'roi': self.getROI}
 
-        icon = QIcon("./icons/folder.svg")
+        icon = QIcon(pkg.resource_filename('NPC','gui/icons/folder.svg'))
         for button in [self.ui.DataPathBut, self.ui.ResPathBut, self.ui.MaskPathBut, self.ui.DarkPathBut, self.ui.DataPathBut_2]:
             button.setIcon(icon)
             button.setIconSize(QtCore.QSize(18, 18))
-        icon = QIcon('./icons/Delete.png')
+        icon = QIcon(pkg.resource_filename('NPC','gui/icons/Delete.png'))
         for button in [self.ui.MaskDelBut, self.ui.DarkDelBut]:
             button.setIcon(icon)
             button.setIconSize(QtCore.QSize(17, 17))

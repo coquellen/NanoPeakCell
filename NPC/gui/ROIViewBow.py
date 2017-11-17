@@ -1,5 +1,5 @@
 from PyQt4 import QtCore, QtGui
-from NPC.gui.npg_ROI_ui import Ui_ROI
+from NPC.gui.ui.npg_ROI_ui import Ui_ROI
 import pyqtgraph as pg
 from scipy.ndimage.filters import gaussian_filter
 import numpy as np
