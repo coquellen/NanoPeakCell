@@ -664,7 +664,7 @@ class NPGController(object):
         self.menuBar.actionLoad_Images.triggered.connect(self.loadImages)
         self.menuBar.actionLoad_Images.triggered.disconnect(self.loadStream)
         self.TreeFileView.ui.LoadResultsBut.clicked.connect(self.loadImages)
-        self.TreeFileView.ui.LoadResultsBut.clicked.connect(self.loadStream)
+        self.TreeFileView.ui.LoadResultsBut.clicked.disconnect(self.loadStream)
 
     def disconnectOffImage(self):
         # Clear the tree (could be saved in cache....)
