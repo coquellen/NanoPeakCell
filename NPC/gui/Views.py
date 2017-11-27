@@ -585,7 +585,7 @@ class ImageView(QMainWindow):
                         #I = self.data[self.cursory, self.cursorx]
                     except:
                        I = 0
-                    res = self.getResolution(self.cursorx, self.cursory)
+                    res = self.getResolution(self.cursorx * self.binning, self.cursory * self.binning)
                     self.ui.ImageInfo.setText("x: %4i - y: %4i    -- Res: %7s  -- I: %4i" % (self.cursorx * self.binning,
                                                                                              self.cursory * self.binning,
                                                                                              res,

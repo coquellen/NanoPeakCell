@@ -130,7 +130,7 @@ class NPGData(QObject):
     def updateData(self, *args):
         self.data = self.IO.openFrame(args)
         self.applyCorrection()
-        self.updateImageView.emit(self.rebin(self.data))
+        self.updateImageView.emit(self.data)
 
     def updateMask(self, fn):
         ext = os.path.splitext(str(fn))[1]

@@ -1,7 +1,7 @@
 import platform
 op_sys = platform.system()
-#if op_sys == 'Darwin':
-#    from Foundation import NSURL
+if op_sys == 'Darwin':
+    from Foundation import NSURL
 from PyQt4 import QtGui, QtCore
 
 class TestListView(QtGui.QTreeWidget):

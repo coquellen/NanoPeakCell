@@ -118,7 +118,7 @@ class NPGController(object):
 
     def __init__(self, app):
         self.app = app
-        self.binning = 1
+        self.binning = 2
         self.settings = QtCore.QSettings('Mycompany', 'NPG')
         self.XPView = XPView(False)
         self.ImageView = ImageView(self.XPView, None, self.binning, req= "HIT", timeout= 100, name='ImageView')
