@@ -136,7 +136,6 @@ class HitManager(object):
             self.send()
 
 
-
     def send(self):
         self.queue.put((self.Nhit, self.N, self.fnsHit, self.fnsRej, self.group))
         self.counter = 0
@@ -156,7 +155,7 @@ class MProcess(multiprocessing.Process):
         self.npg = npg
         self.name = name
         self.hitsignal = Signals()
-        self.name = multiprocessing.current_process().name
+        self.name = name
         self.kill_received = False
         self.task_queue = task_queue
         self.result_queue = result_queue
@@ -173,7 +172,9 @@ class MProcess(multiprocessing.Process):
         self.manager = HitManager(self.result_queue)
         self.exit = multiprocessing.Event()
 
-
+        self.saveFormat = {'cbf': ['CBF', 'cbf', self.saveCbf],
+                           'hdf5': ['HDF5', 'h5', self.saveH5],
+                           'pickles': ['PICKLES', 'pickle', self.savePickle]}
 
         #Defining ROI
         if self.options['roi'].lower() == 'none' :
@@ -334,17 +335,6 @@ class MProcess(multiprocessing.Process):
 
         #TODO : Bragg Search here - Save to txt file or H5
 
-        #Update Screen
-        if str(self.name) == '0' and self.MShemArray is not None:
-            n = self.data.shape[0]
-            m = self.data.shape[1]
-            self.MShemArray[:] = self.data.reshape((1,n*m))[0][:]
-        
-
-        self.saveFormat = {'edf':['EDF','edf',self.saveEdf],
-                           'cbf':['CBF','cbf',self.saveCbf],
-                           'hdf5': ['HDF5','h5',self.saveH5],
-                           'pickles':['PICKLES','pickle',self.savePickle]}
 
         for outputFormat in self.options['output_formats'].split():
             dirStr, extStr, func = self.saveFormat[outputFormat]
@@ -496,10 +486,50 @@ class MProcessEiger(MProcess):
                                                  self.dark,
                                                  (0,self.detector.shape[0],0,self.detector.shape[1]))
 
-                self.saveHit('%s_%i'%(filename,i))
+                self.saveHit(filename,i)
+                #print('%s_%i'%(filename,i))
                 self.count += 1
         self.h5.close()
         return
+
+    def saveHit(self, fname, idx):
+
+        self.setOutputRoot(fname)
+
+        #TODO : Bragg Search here - Save to txt file or H5
+
+
+        for outputFormat in self.options['output_formats'].split():
+            dirStr, extStr, func = self.saveFormat[outputFormat]
+            OutputFileName = os.path.join(self.options['output_directory'],
+                                          'NPC_run%s' % (self.options['num'].zfill(3)),
+                                          dirStr,
+                                          '%s_%s'%(self.root, str(idx).zfill(4)))
+                                          #"%s.%s" % (self.root, extStr))
+
+            func(OutputFileName,extStr)
+
+    def saveCbf(self, OutputFileName,extStr):
+        fname = '%s.%s'%(OutputFileName,
+                               extStr)
+        write_CBF(fname,self.data.astype(np.int32))
+
+
+    def savePickle(self, OutputFileName,extStr):
+        #if cctbx:
+            ovl = self.getOvl()
+            pixels = flex.int(self.data.astype(np.int32))
+            pixel_size = self.detector.pixel1
+            data = dpack(data=pixels,
+                         distance=self.options['distance'],
+                         pixel_size=pixel_size,
+                         wavelength=self.options['wavelength'],
+                         beam_center_x=self.options['beam_y'] * pixel_size,
+                         beam_center_y=self.options['beam_x'] * pixel_size,
+                         ccd_image_saturation=ovl,
+                         saturated_value=ovl)
+            easy_pickle.dump('%s.%s'%(OutputFileName,extStr), data)
+
 
 
     def exitProperly(self):

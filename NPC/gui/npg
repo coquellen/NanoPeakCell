@@ -175,10 +175,12 @@ class NPGController(object):
 
         # Bindings with HF
         self.HitFindingView.ui.PlayButton_2.clicked.connect(self.startNPC)
-        self.HitFindingView.ui.Stop.clicked.connect(self.stopNPC)
+        #self.HitFindingView.ui.Stop.clicked.connect(self.stopNPC)
         self.HitFindingView.ui.MaskPathBut.clicked.connect(lambda: self.openMask(openfn=True))
         self.HitFindingView.ui.MaskDelBut.clicked.connect(self.deleteMask)
         self.HitFindingView.setTable.connect(self.restoreRuns)
+        self.HitFindingView.braggSearch.connect(self.findBragg)
+        #self.HitFindingView.ui.checkBox.ch
 
 
         #Bindings with Menu
@@ -259,11 +261,23 @@ class NPGController(object):
         else:
             self.menuBar.actionResolution_Rings.setChecked(False)
 
+    def findBragg(self, threshold):
+        res = self.ImgModel.findBragg(threshold)
+        if res is not None:
+            #print res[:,0]
+            #print res[:,1]
+            self.ImageView.showBragg = True
+            self.ImageView.view.IntegratedPlot.setData(res[:,1] / self.binning, res[:,0] / self.binning)
+
     def startNPC(self):
+        #print(self.XPView.getDetector())
+        #print(self.XPView.getDistance())
+        #print(self.XPView.getBeam())
+        #print(self.XPView.getWavelength())
         NPC_parameters = {
              'detector': 'Eiger4M',
              'experiment': 'SSX',
-             'detector_distance': 100,
+             'distance': 100,
              'beam_x': 502,
              'beam_y': 515,
              'wavelength': 0.832,
@@ -715,6 +729,7 @@ class NPGController(object):
     def restoreRuns(self):
         d = os.path.realpath(str(self.HitFindingView.ui.ResultsPath.text()))
         dirs = sorted(glob.glob(os.path.join(d,'NPC_run*')))
+        print dirs
         self.nRun, self.nRow = self.Table.restoreRows(dirs)
 
 

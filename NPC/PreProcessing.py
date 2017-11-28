@@ -429,17 +429,13 @@ class DataProcessingMultiprocessing(DataProcessing):
         self.statsManager.getFinalResults()
 
     def shutDown(self):
-
         self.exit.set()
-
-
 
     def getStats(self):
         while True or self.statsManager.processed != self.statsManager.total:
             try:
                 self.statsManager.total = self.N_queue.get(block=False, timeout=None)
                 self.statsManager.chunk = max(int(round(float(self.statsManager.total) / 1000.)), 20)
-
             except Queue.Empty:
                 pass
 

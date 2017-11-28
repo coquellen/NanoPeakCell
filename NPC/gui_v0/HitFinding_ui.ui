@@ -657,7 +657,7 @@
    </property>
    <property name="geometry">
     <rect>
-     <x>20</x>
+     <x>40</x>
      <y>650</y>
      <width>100</width>
      <height>32</height>
@@ -687,11 +687,11 @@
   </widget>
   <widget class="QPushButton" name="PlayButton_3">
    <property name="enabled">
-    <bool>false</bool>
+    <bool>true</bool>
    </property>
    <property name="geometry">
     <rect>
-     <x>220</x>
+     <x>170</x>
      <y>650</y>
      <width>100</width>
      <height>32</height>
@@ -716,41 +716,7 @@
     </size>
    </property>
    <property name="text">
-    <string>Find Bragg</string>
-   </property>
-  </widget>
-  <widget class="QPushButton" name="Stop">
-   <property name="enabled">
-    <bool>false</bool>
-   </property>
-   <property name="geometry">
-    <rect>
-     <x>120</x>
-     <y>650</y>
-     <width>100</width>
-     <height>32</height>
-    </rect>
-   </property>
-   <property name="sizePolicy">
-    <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-     <horstretch>0</horstretch>
-     <verstretch>0</verstretch>
-    </sizepolicy>
-   </property>
-   <property name="minimumSize">
-    <size>
-     <width>100</width>
-     <height>32</height>
-    </size>
-   </property>
-   <property name="maximumSize">
-    <size>
-     <width>100</width>
-     <height>32</height>
-    </size>
-   </property>
-   <property name="text">
-    <string>Stop</string>
+    <string>Find Braggs</string>
    </property>
   </widget>
  </widget>

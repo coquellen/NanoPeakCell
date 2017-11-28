@@ -5,12 +5,12 @@ try:
 except:
     import _pickle as cPickle
 import os, sys
-from PyQt4.QtCore import  pyqtSignal, QObject, QTimer
-import zmq
+from PyQt4.QtCore import  pyqtSignal, QObject
+
 import numpy as np
-sys.path.insert(0, '/Users/coquelleni/PycharmProjects/NanoPeakCell_0.3.2/NPC/gui/')
-#from geom import reconstruct, parse_geom_file, getGeomTransformations
-from ZmqSockets import ZMQPull
+from NPC.gui.geom import reconstruct, parse_geom_file, getGeomTransformations
+import NPC.gui.peakfind as pf
+#from ZmqSockets import ZMQPull
 
 
 def visitor_func(h5):
@@ -28,7 +28,6 @@ def visitor_func(h5):
 
         else:
             visitor_func(node)
-
 
 def load_pickle(file_name, faster_but_using_more_memory=True):
   """
@@ -124,6 +123,7 @@ class NPGData(QObject):
         self.loadedGeom = False
         self.geom = None
         self.IO = OpenImage()
+        self.MaxOverThreshold = 10000
         #self.socketTimer = QTimer()
         #self.socketTimer.timeout.connect(self.receiveMSG)
 
@@ -199,7 +199,37 @@ class NPGData(QObject):
         return temp.max(axis=3).max(axis=1).astype(data.dtype)
         #return out.astype(data.dtype)
 
-    #def startZMQPull(self, host, port):
+    def findBragg(self, threshold):
+        if self.data is not None:
+            #data = self.data.astype(np.int32)
+            N = np.count_nonzero(self.data > threshold)
+            if N > self.MaxOverThreshold:
+                #self.ui.Log.appendPlainText(
+                print("Bragg search aborted... A threshold value of %i does not seem appropriate for this pattern." % threshold)
+                #if self.filename_cache != self.imgfact.filename:
+                self.max_t = np.sort(self.data, axis=None)[-1000]
+                #self.filename_cache = self.imgfact.filename
+                #self.ui.Log.appendPlainText(
+                print("Bragg search will be allowed for threshold values equal to or above %i for this pattern." % self.max_t)
+                return None
+            self.peaks = pf.local_maxima(self.data.astype(np.int32), 3, 3, threshold)
+            num_braggs = len(self.peaks)
+
+            #if num_braggs > self.MaxBraggs:
+            #    self.ui.Log.appendPlainText(
+            #        "Too many Bragg peaks have been found to be displayed (%i). Please consider adjusting your threshold.\n" % len(
+            #            self.peaks))
+            #else:
+            #self.ui.Log.appendPlainText(
+            print("Found %4i Bragg peaks  (threshold of %i)" % (
+                    num_braggs, threshold))
+
+            return self.peaks
+            #self.display_peaks(self.peaks)
+            #self.ShowBraggs = True
+            #self.ui.actionShow_Bragg_Peaks.setText("Hide Bragg Peaks")
+
+                #def startZMQPull(self, host, port):
     #    if host == 'localhost': host = '127.0.0.1'
     #    self.ZMQPull = ZMQPull(host = host, port=port, opts=[zmq.CONFLATE], flags=zmq.NOBLOCK)
     #    self.socketTimer.start(500)

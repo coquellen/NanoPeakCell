@@ -404,13 +404,14 @@ class ImageView(QMainWindow):
         self.binning = binning
         self.vmin = 0
         self.vmax = 10
-
+        self.showBragg = False
         self.show()
         self.raise_()
 
 
         # Setting up our ImageItem for pyqtgraph
         self.view = NPGViewBox(parent=self, binning= self.binning)
+        #self.view.sigMouseClicked.connect(self.getIntensities)
         self.ui.graphicsView.setCentralItem(self.view)
 
         #These bindings are not in the controller as they immediately change the view
@@ -468,6 +469,9 @@ class ImageView(QMainWindow):
             self.data = self.rebin(data)
         else: self.data = data
         self.view.img.setImage(self.data.astype(np.float64), levels=(self.vmin, self.vmax))
+        if self.showBragg :
+            self.view.IntegratedPlot.setData([],[])
+            self.showBragg = False
 
     def setLevels(self):
         try:
@@ -539,6 +543,26 @@ class ImageView(QMainWindow):
             return '%4.2f ' % (self.XPView.wl / (2. * np.sin(theta)))
         except:
             return 'nan'
+
+    def getIntensities(self, ev):
+        if ev.button() == QtCore.Qt.MidButton and self.view.sceneBoundingRect().contains(ev.pos()):
+            x = self.cursorx
+            y = self.cursory
+            try:
+                xmax, ymax = self.data.shape
+                if self.cursorx > 0 and self.cursory > 0 and self.cursorx < xmax and self.cursory < ymax:
+                    data = self.data[x - 10:x + 9, y - 10:y + 9].T
+                    s = ''
+                    for i in range(0, 19):
+                        s = s + '\n' + ''.join(['%6i' % member for member in data[-(i + 1), :]])
+                    self.popup_int.ui.textEdit.setText("%s" % s)
+                    if not self.popup_int.isVisible(): self.popup_int.show()
+                    self.popup_int.setWindowState(
+                        self.popup_int.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
+                    # this will activate the window
+                    self.popup_int.activateWindow()
+            except AttributeError:
+                print('No data loaded yet')
 
     def updateBoost(self):
         #try:
@@ -628,7 +652,6 @@ class ImageView(QMainWindow):
         self.closeSignal.emit(QCloseEvent)
         self.Pos = self.pos()
         self.close()
-
 
 
 class MaxProjView(ImageView):
@@ -1005,13 +1028,14 @@ class TableWidget(NPGWidget):
 
     def restoreRows(self, dirs):
         self.ui.tableWidget.setRowCount(0)
-
+        self.currentRow = 0
         nRun = 0
         nRow = 0
         for d in dirs:
             nRun = int(d[-3:])
             self.addRow(nRun)
-            #print nRun
+            print nRun
+            print self.Nevents
             try:
                 options = json.loads(open(os.path.join(d, ".NPC_params.json")).read())
                 nRun = int(options['num'])
@@ -1032,6 +1056,10 @@ class TableWidget(NPGWidget):
                 self.hitRate.setText("--")
                 self.pBar.setText("N/A")
 
+            except AttributeError:
+                pass
+
+
         return nRun, nRow
 
     def closeEvent(self, evt):
@@ -1047,6 +1075,7 @@ class TableWidget(NPGWidget):
 class HitFindingView(NPGWidget):
 
     setTable = pyqtSignal()
+    braggSearch = pyqtSignal(float)
     name = 'HitFindingView'
 
     def __init__(self, parent=None):
@@ -1082,6 +1111,19 @@ class HitFindingView(NPGWidget):
 
         self.ui.DataPathBut.clicked.connect(lambda: self.setPath(self.ui.DataPath))
         self.ui.ResPathBut.clicked.connect(lambda: self.setPath(self.ui.ResultsPath))
+        self.ui.findBraggBut.clicked.connect(self.findBraggs)
+
+    def findBraggs(self):
+        """ Find Position of Bragg peaks in the img
+        and display it on screen  Should use the Braggs module"""
+        try:
+            threshold = float(self.ui.BraggThreshold.text())
+            self.braggSearch.emit(threshold)
+            return
+        except ValueError:
+                print("Bad input - Please check the value of Bragg Threshold parameter -")
+                # self.ui.Log.appendPlainText("Bad input - Please check the value of Bragg Threshold parameter -")
+                return
 
     def getDataPath(self):
         txt = str(self.ui.DataPath.text())
@@ -1130,11 +1172,11 @@ class HitFindingView(NPGWidget):
     def getOutFormats(self):
         s = ''
         if self.ui.hdf5out.isChecked():
-            s += 'hdf5'
+            s += 'hdf5 '
         if self.ui.cctbxout.isChecked():
-            s += 'cctbx'
+            s += 'pickles '
         if self.ui.cbfout.isChecked():
-            s += 'cbf'
+            s += 'cbf '
         return s
 
     def setPath(self, var):
