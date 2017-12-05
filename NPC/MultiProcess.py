@@ -443,9 +443,9 @@ class MProcessEiger(MProcess):
         filename, self.group, self.ovl, self.type, N = task
         self.h5 = h5py.File(filename,'r')
 
-        if self.options['HitFile'] is not None:
-            iterable = [int(x) for x in N]
-        else: iterable = range(0,N)
+        if type(N) is int:
+            iterable = range(0,N)
+        else: iterable = N
         for i in iterable:
           if not self.exit.is_set():
             #Dark Correction

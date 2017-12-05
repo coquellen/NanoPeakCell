@@ -42,7 +42,6 @@ class FileSentinel(multiprocessing.Process):
     def loadSsxQueue(self):
         try:
             self.total += len(self.filenames)
-            print(self.total)
             self.total_queue.put(self.total)
             for fname in self.filenames:
                 self.tasks.put(fname, block=True, timeout=None)
@@ -60,13 +59,22 @@ class FileSentinel(multiprocessing.Process):
             self.type=np.float64
 
         if self.options['HitFile'] is None:
+            print(self.options['shootntrap'])
+            print(self.options['nperposition'])
+            print(self.options['nempty'])
+
             for filename in self.filenames:
                 #Log("[%s] Opening %s"%(self.name, filename))
                 h5 = h5py.File(filename,'r')
                 try:
                     num_frames, res0, res1 = h5[self.h5path].shape
-                    self.total += num_frames
-                    task = (filename, self.h5path, self.overload, self.type, num_frames)
+                    if self.options['shootntrap']:
+                        idx = [i for i in range(self.options['nempty']+1,num_frames,self.options['nperposition'])]
+                        self.total += len(idx)
+                    else:
+                        self.total += num_frames
+                        idx = num_frames
+                    task = (filename, self.h5path, self.overload, self.type, idx)
                     self.tasks.put(task, block=True, timeout=None)
                     self.total_queue.put(self.total)
                 except KeyError:
@@ -78,11 +86,12 @@ class FileSentinel(multiprocessing.Process):
                 h5.close()
         else:
             for filename in self.filenames:
-                task = (filename, self.h5path, self.overload, self.type, self.options['HitFile'][filename])
+                task = (filename, self.h5path, self.overload, self.type, [int(x) for x in self.options['HitFile'][filename]])
                 self.tasks.put(task, block=True, timeout=None)
                 self.total += len(self.options['HitFile'][filename])
 
         self.total_queue.put(self.total)
+        print(self.total)
         self.chunk = max(int(round(float(self.total) / 1000.)), 10)
 
         self.givePoisonPill()

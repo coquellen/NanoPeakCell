@@ -33,7 +33,11 @@ Hit_Finding_Parameters = {'threshold': (int, 0),
                           'npixels': (int, 20),
                           'bragg_search': (parseBoolString, False),
                           'bragg_threshold': (int, 10),
-                          'roi': (str, None)}
+                          'roi': (str, None),
+                          'shootntrap': (parseBoolString, False),
+                          'nperposition': (int, 0),
+                          'nempty': (int, 0)}
+
 
 General = {'experiment': (str, 'SSX'),
            'cpus': (int, 4),
@@ -185,18 +189,21 @@ if __name__ == '__main__':
             options['HitFile'] = None
             pass
 
+
         if os.path.isfile(config_file):
             options['config_file'] = config_file
             npc_parser = NpcGenericParser(config_file)
             for key in npc_parser.mapping:
+
                 options.update(npc_parser.mapping[key])
             options['num'] = utils.get_result_folder_number(options)
             utils.create_results_folders(options)
             results = os.path.join(options['output_directory'], 'NPC_run%s' %options['num'].zfill(3))
             options['json_file'] = os.path.join(results, 'NPC_params.json')
 
-
-            shutil.copyfile(config_file, os.path.join(results, config_file))
+            #print(options)
+            #exit()
+            shutil.copyfile(config_file, os.path.join(results, os.path.basename(config_file)))
 
             if options['parallelism'] == 'MPI':
                 from NPC.PreProcessing import DataProcessingMPI as DataProc
