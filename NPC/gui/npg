@@ -116,7 +116,9 @@ class NPGMenuBar(QtGui.QMenuBar):
 
 class NPGController(object):
 
-    def __init__(self, app):
+    def __init__(self, app, argv):
+
+
         self.app = app
         self.binning = 2
         self.settings = QtCore.QSettings('Mycompany', 'NPG')
@@ -223,6 +225,13 @@ class NPGController(object):
 
         for cnt, item in enumerate(QActionModes):
             item.triggered.connect(self.switchingMode)
+
+        if len(argv) == 2:
+            txt = argv[1]
+            if os.path.isdir(txt):
+                self.TreeFileView.treeFactory.append_object(txt)
+            else:
+                self.TreeFileView.treeFactory.append_file(txt)
 
     def raiseAll(self, s):
         for view in self.views:
@@ -510,31 +519,88 @@ class NPGController(object):
             view.close()
         self.app.quit()
 
-    def restoreState(self):
-        geoms = ['geometry_XPView', 'geometry_ImageView', 'geometry_Tree', 'geometry_HF', 'geometry_Table']
-        visStates = ['visible_XPView', 'visible_ImageView', 'visible_Tree', 'visible_HF', 'visible_Table']
+    def saveState(self):
         views = [self.XPView, self.ImageView, self.TreeFileView, self.HitFindingView, self.Table]
-        menus = [self.menuBar.actionExperimental_Settings, None, self.menuBar.actionFile_Tree, self.menuBar.actionHit_Finding, self.menuBar.actionRuns]# , self.TreeFileView, self.HitFindingView]
+        settings = {}
+
         for i in range(len(views)):
             view = views[i]
+            s = view.size()
+            pos = view.pos()
+            d = {'height': int(s.height()),
+                 'width': int(s.width()),
+                 'x': int(pos.x()),
+                 'y': int(pos.y()),
+                 'visible': view.visible,
+                 }
 
-            # Restore geomtry
-            geometry = self.settings.value(geoms[i], '')
+            for name, obj in inspect.getmembers(view.ui):
+                # if type(obj) is QComboBox:  # this works similar to isinstance, but missed some field... not sure why?
+                if isinstance(obj, QtGui.QComboBox):
+                    name = obj.objectName()  # get combobox name
+                    index = obj.currentIndex()  # get current index from combobox
+                    text = obj.itemText(index)  # get the text for current index
+                    d[str(name)] = str(text)
 
+                if isinstance(obj, QtGui.QLineEdit):
+                    name = obj.objectName()
+                    value = obj.text()
+                    d[str(name)] = str(value)
+
+                if isinstance(obj, QtGui.QCheckBox):
+                    name = obj.objectName()
+                    state = obj.isChecked()
+                    d[str(name)] = state
+
+                if isinstance(obj, QtGui.QRadioButton):
+                    name = obj.objectName()
+                    value = obj.isChecked()  # get stored value from registry
+                    d[str(name)] = value
+
+            settings[view.name] = d
+
+        try:
+            settings['maskFN'] = self.maskFile
+        except:
+            settings['maskFN'] = ""
+
+        settings['Tree'] = self.TreeFileView.treeFactory.filenames_dic
+
+        try:
+            settings['geom'] = self.geomFile
+        except:
+            settings['geom'] = ""
+
+        with open(os.path.expanduser('~/.NPGrc.json'), 'w') as outfile:
+            json.dump(settings, outfile)
+
+    def restoreState(self):
+        views = [self.XPView, self.ImageView, self.TreeFileView, self.HitFindingView, self.Table]
+        menus = [self.menuBar.actionExperimental_Settings, None, self.menuBar.actionFile_Tree,
+                 self.menuBar.actionHit_Finding, self.menuBar.actionRuns]  # , self.TreeFileView, self.HitFindingView]
+        jsonFile = os.path.expanduser('~/.NPGrc.json')
+
+        if os.path.exists(jsonFile):
+            settings = json.loads(open(jsonFile).read())
+        else:
+            return
+
+        for i in range(len(views)):
+            view = views[i]
             try:
-                # Python 2
-                view.restoreGeometry(geometry.toByteArray())
-                # Python 3
-            except AttributeError: view.restoreGeometry(geometry)
-            # Restore state (Visble or not)
-            try:
-                vis = self.settings.value(visStates[i],True).toBool()
-            except AttributeError:
-                vis = self.settings.value(visStates[i], True)
+                viewSettings = settings[view.name]
+            except KeyError:
+                continue
 
+            # Restore geometry
+            view.move(int(viewSettings['x']), int(viewSettings['y']))
+            view.resize(int(viewSettings['width']), int(viewSettings['height']))
+            view.Pos = view.pos()
+
+            # Was the window visible or not ?
+            vis = viewSettings['visible']
             view.setVisible(vis)
             view.visible = vis
-
             # Restore menu state
             menu = menus[i]
             if menu is not None:
@@ -542,15 +608,13 @@ class NPGController(object):
 
             for name, obj in inspect.getmembers(view.ui):
                 if isinstance(obj, QtGui.QComboBox):
-                    index = obj.currentIndex()  # get current region from combobox
+                    #index = obj.currentIndex()  # get current region from combobox
                     name = obj.objectName()
-                    try: value = str(self.settings.value(name).toString())
-                    except AttributeError: value = str(self.settings.value(name))
+                    value = viewSettings[str(name)]
+
                     if value == "":
                         continue
-
                     index = obj.findText(value)  # get the corresponding index for specified string in combobox
-
                     if index == -1:  # add to list if not found
                         obj.insertItems(0, [value])
                         index = obj.findText(value)
@@ -560,103 +624,58 @@ class NPGController(object):
 
                 if isinstance(obj, QtGui.QLineEdit):
                     name = obj.objectName()
-                    try:
-                        value = self.settings.value(name).toString()  # get stored value from registry
-                    except AttributeError:
-                        value = self.settings.value(name)  # get stored value from registry
+                    value = viewSettings[str(name)]
                     try:
                         obj.setText(value)  # restore lineEditFile
                     except TypeError:
                         continue
+
                 if isinstance(obj, QtGui.QCheckBox):
                     name = obj.objectName()
-                    try:
-                        value = self.settings.value(name).toBool()  # get stored value from registry
-                    except AttributeError:
-                        value = self.settings.value(name)
-                      # get stored value from registry
+                    value = viewSettings[str(name)]
                     if value != None:
                         obj.setChecked(value)  # restore checkbox
 
                 if isinstance(obj, QtGui.QRadioButton):
                     name = obj.objectName()
-                    try:
-                        value = self.settings.value(name).toBool()  # get stored value from registry
-                    except AttributeError:
-                        value = self.settings.value(name)
+                    value = viewSettings[str(name)]
 
-                    try:
-                        if value != None:
-                            obj.setCheckState(value)
-                    except: pass
+                    if value != None:
+                        obj.setDown(value)
 
         # Do not forget to restore the object attributes to the widget values.
         self.ImageView.setAttr()
         self.XPView.setupData()
 
-        #Restore Extra Settings
         try:
-            self.TreeFileView.treeFactory.restoreTree(self.settings.value("Tree", {}).toPyObject())
+            self.TreeFileView.treeFactory.restoreTree(settings['Tree'])
         except:
-            self.TreeFileView.treeFactory.restoreTree(self.settings.value("Tree", {}))
-        try:
-            self.maskFile = str(self.settings.value("Mask","").toString())
+            pass
+            #self.TreeFileView.treeFactory.restoreTree(self.settings.value("Tree", {}))
 
-        except AttributeError:
-            self.maskFile = self.settings.value("Mask", "")
+        try:
+            self.maskFile = settings['maskFN']
+        except KeyError:
+                self.maskFile = ""
+
+        try:
+            self.geomFile = settings['geom']
+        except KeyError:
+            self.geomFile = ""
 
         if self.maskFile:
-            try:
-                self.openMask(openfn=False)
-            except:
-                print("Error loading mask: %s" %self.maskFile)
-        try:
-            self.geomFile = str(self.settings.value("Geometry","").toString())
-        except AttributeError:
-            self.geomFile = str(self.settings.value("Geometry", ""))
+            self.ImageView.ui.Mask.setText(
+                "Current Mask File:  %s " % self.maskFile)
+            self.ImageView.ui.Geom.setText("")
 
+
+
+
+
+        #Restore Extra Settings
 
         #if self.geomFile:
         #    self.openGeometry(openfn=False)
-
-    def saveState(self):
-        geoms = ['geometry_XPView', 'geometry_ImageView', 'geometry_Tree', 'geometry_HF', 'geometry_Table']
-        visStates = ['visible_XPView', 'visible_ImageView', 'visible_Tree', 'visible_HF', 'visible_Table']
-        views = [self.XPView, self.ImageView, self.TreeFileView, self.HitFindingView, self.Table]
-
-        self.settings.setValue("Tree",self.TreeFileView.treeFactory.filenames_dic)
-        self.settings.setValue("Mask", self.maskFile)
-        self.settings.setValue("Geometry", self.geomFile)
-
-        for i  in range(len(views)):
-            view = views[i]
-            geom = geoms[i]
-            vis = visStates[i]
-            self.settings.setValue(geom, view.saveGeometry())
-            self.settings.setValue(vis, view.visible)
-
-            for name, obj in inspect.getmembers(view.ui):
-                # if type(obj) is QComboBox:  # this works similar to isinstance, but missed some field... not sure why?
-                if isinstance(obj, QtGui.QComboBox):
-                    name = obj.objectName()  # get combobox name
-                    index = obj.currentIndex()  # get current index from combobox
-                    text = obj.itemText(index)  # get the text for current index
-                    self.settings.setValue(name, text)  # save combobox selection to registry
-
-                if isinstance(obj, QtGui.QLineEdit):
-                    name = obj.objectName()
-                    value = obj.text()
-                    self.settings.setValue(name, value)  # save ui values, so they can be restored next time
-
-                if isinstance(obj, QtGui.QCheckBox):
-                    name = obj.objectName()
-                    state = obj.isChecked()
-                    self.settings.setValue(name, state)
-
-                if isinstance(obj, QtGui.QRadioButton):
-                    name = obj.objectName()
-                    value = obj.isChecked()  # get stored value from registry
-                    self.settings.setValue(name, value)
 
     def switchingMode(self):
         print("Switching Off Current Mode: %s" % self.currentMode)
@@ -736,5 +755,5 @@ class NPGController(object):
 if __name__ == '__main__':
     import sys
 
-    myapp = NPGController(app)
+    myapp = NPGController(app, sys.argv)
     sys.exit(app.exec_())
