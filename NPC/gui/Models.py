@@ -142,7 +142,7 @@ class NPGData(QObject):
         self.loadedMask = True
         if self.data is not None:
             self.applyCorrection()
-            self.updateImageView.emit(self.rebin(self.data))
+            self.updateImageView.emit(self.data)
 
     def updateStreamGeom(self, fn):
         self.updateGeom(str(fn), openfn=False)
@@ -159,7 +159,7 @@ class NPGData(QObject):
         self.loadedGeom = True
         if self.data is not None:
             self.applyCorrection()
-            self.updateImageView.emit(self.rebin(self.data))
+            self.updateImageView.emit(self.data)
 
     def applyCorrection(self):
         if self.loadedMask:
