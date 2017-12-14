@@ -14,7 +14,7 @@ try:
     import Queue
 except ImportError:
     import queue as Queue
-import sys
+import cPickle
 from PyQt4 import QtCore
 
 
@@ -531,7 +531,9 @@ class MProcessEiger(MProcess):
                          beam_center_y=self.options['beam_x'] * pixel_size,
                          ccd_image_saturation=ovl,
                          saturated_value=ovl)
-            easy_pickle.dump('%s.%s'%(OutputFileName,extStr), data)
+
+            cPickle.dump(data, open('%s.%s'%(OutputFileName,extStr), "wb"), cPickle.HIGHEST_PROTOCOL)
+            #easy_pickle.dump('%s.%s'%(OutputFileName,extStr), data)
 
 
     def saveH5(self, OutputFileName,extStr):
