@@ -74,7 +74,7 @@ class FileSentinel(multiprocessing.Process):
                     else:
                         self.total += num_frames
                         idx = num_frames
-                    task = (filename, self.h5path, self.overload, self.type, idx)
+                    task = (filename, self.h5path, self.overload, self.type, idx, self.total)
                     self.tasks.put(task, block=True, timeout=None)
                     self.total_queue.put(self.total)
                 except KeyError:
@@ -183,7 +183,7 @@ class StatsManager(object):
     def __init__(self, options, resultsQueue ):
         self.options = options
         self.resultsQueue = resultsQueue
-        self.socket = ZMQPush(host='127.0.0.1',port=5556,flags=zmq.NOBLOCK, verbose=False)
+        #self.socket = ZMQPush(host='127.0.0.1',port=5556,flags=zmq.NOBLOCK, verbose=False)
         self.initTxtFiles()
         self.t1 = time.time()
         #self.signals = Signals()
@@ -268,8 +268,7 @@ class StatsManager(object):
 
 # Changed in the scope of NPC
 class DataProcessingMPI(DataProcessing):
-
-        def __init__(self, options):
+        def __init__(self, options, log=None, npg=None):
             DataProcessing.__init__(self, options)
             
             try:
@@ -282,8 +281,13 @@ class DataProcessingMPI(DataProcessing):
             self.rank = self.comm.rank
             self.size = self.comm.size
 
+
+
             if self.rank == 0:
                 utils.startup(options)
+
+
+
             self.HitFinder = HitFinder(self.options, self.detector, self.ai)
 
             self.t1 = time.time()
@@ -336,6 +340,27 @@ class DataProcessingMPI(DataProcessing):
                                 self.update_results(working)
                 h5.close()
             self.get_final_stats()
+
+        def shutDown(self):
+            self.exit.set()
+
+        def getStats(self):
+            while True or self.statsManager.processed != self.statsManager.total:
+                try:
+                    self.statsManager.total = self.N_queue.get(block=False, timeout=None)
+                    self.statsManager.chunk = max(int(round(float(self.statsManager.total) / 1000.)), 20)
+                except Queue.Empty:
+                    pass
+
+                try:
+                    self.statsManager.getResults()
+
+                except Queue.Empty:
+                    break
+
+        def startFS(self):
+            self.FS.daemon = True
+            self.FS.start()
 
         def update_results(self,working):
                 self.hit += 1
