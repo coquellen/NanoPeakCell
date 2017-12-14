@@ -76,7 +76,7 @@ class FileSentinel(multiprocessing.Process):
                     else:
                         self.total += num_frames
                         idx = num_frames
-                    task = (filename, self.h5path, self.overload, self.type, idx, self.total)
+                    task = (filename, self.h5path, self.overload, self.type, idx)
                     self.tasks.put(task, block=True, timeout=None)
                     self.total_queue.put(self.total)
                 except KeyError:

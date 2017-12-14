@@ -440,12 +440,15 @@ class MProcessEiger(MProcess):
 
     def isHit(self,task):
 
-        self.h5in, self.group, self.ovl, self.type, N, self.total = task
+        #The task should be a dict, then no need to worry about number of elements in it
+        self.h5in, self.group, self.ovl, self.type, N = task
         self.h5 = h5py.File(self.h5in,'r')
 
         if type(N) is int:
             iterable = range(0,N)
-        else: iterable = N
+        else:
+            iterable = N
+
         for i in iterable:
           if not self.exit.is_set():
             #Dark Correction
