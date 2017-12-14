@@ -99,8 +99,8 @@ def dpack(active_areas=None,
 
 ### Python3 ?
 try:
-    from libtbx import easy_pickle
-    from scitbx.array_family import flex
+    #from libtbx import easy_pickle
+    #from scitbx.array_family import flex
     cctbx = True
 except SyntaxError:
     cctbx = False
@@ -440,8 +440,8 @@ class MProcessEiger(MProcess):
 
     def isHit(self,task):
 
-        filename, self.group, self.ovl, self.type, N = task
-        self.h5 = h5py.File(filename,'r')
+        self.h5in, self.group, self.ovl, self.type, N, self.total = task
+        self.h5 = h5py.File(self.h5in,'r')
 
         if type(N) is int:
             iterable = range(0,N)
@@ -477,7 +477,7 @@ class MProcessEiger(MProcess):
 
             #Hit Finding
             hit = int( np.count_nonzero(masked.compressed() > self.options['threshold']) >= self.options['npixels'])
-            self.manager.add(hit,1,'%s //%i' % (filename,i), self.group)
+            self.manager.add(hit,1,'%s //%i' % (self.h5in,i), self.group)
             #self.result_queue.put((hit, 1, '%s //%i' % (filename,i), self.group))
 
             if len(self.options['output_formats'].split()) > 0 and hit > 0:
@@ -486,7 +486,7 @@ class MProcessEiger(MProcess):
                                                  self.dark,
                                                  (0,self.detector.shape[0],0,self.detector.shape[1]))
 
-                self.saveHit(filename,i)
+                self.saveHit(self.h5in,i)
                 #print('%s_%i'%(filename,i))
                 self.count += 1
         self.h5.close()
@@ -529,6 +529,50 @@ class MProcessEiger(MProcess):
                          ccd_image_saturation=ovl,
                          saturated_value=ovl)
             easy_pickle.dump('%s.%s'%(OutputFileName,extStr), data)
+
+
+    def saveH5(self, OutputFileName,extStr):
+        if self.Nhits % self.NFramesPerH5 == 0:
+            if self.h5out is not None: self.h5out.close()
+            OutputFileName = os.path.join(self.options['output_directory'],
+                                          'NPC_run%s' % (self.options['num'].zfill(3)),
+                                          'HDF5',
+                                          "%s_%s_%i.h5" % (
+                                          self.options['filename_root'], self.name,
+                                          self.Nhits / self.NFramesPerH5))
+            self.h5out = h5py.File(OutputFileName, 'w')
+            self.dset = self.h5out.create_dataset("data",
+                                                  (self.NFramesPerH5, self.detector.shape[0], self.detector.shape[1]),
+                                                  compression="gzip", dtype=np.float32)
+            if self.options['bragg_search']:
+                self.nPeaks = self.h5out.create_dataset("nPeaks", (self.NFramesPerH5,), dtype=np.int32, chunks=(1,))
+                self.peakTotalIntensity = self.h5out.create_dataset("peakTotalIntensity",
+                                                                    (self.NFramesPerH5, 2000),
+                                                                    maxshape=(self.NFramesPerH5, None))
+
+                self.peakXPosRaw = self.h5out.create_dataset("peakXPosRaw",
+                                                             (self.NFramesPerH5, 2000),
+                                                             maxshape=(self.NFramesPerH5, None))
+
+                self.peakYPosRaw = self.h5out.create_dataset("peakYPosRaw",
+                                                             (self.NFramesPerH5, 2000),
+                                                             maxshape=(self.NFramesPerH5, None))
+
+        self.dset[self.Nhits % self.NFramesPerH5, ::] = self.data[:]
+
+        if self.options['bragg_search']: #and np.count_nonzero(self.data > self.options['bragg_threshold']) < 10000:
+
+            X, Y, I = find_peaks(self.data * -1 * (self.mask - 1), self.options['bragg_threshold'])
+
+            # If more than 2000k bragg peaks - restrain to the first 2k
+            dim2 = min(X.size,2000)
+            idx = self.Nhits % self.NFramesPerH5
+            self.nPeaks[idx] = dim2
+            self.peakXPosRaw[idx, 0:dim2] = X[0:dim2].reshape(1, dim2)
+            self.peakYPosRaw[idx, 0:dim2] = Y[0:dim2].reshape(1, dim2)
+            self.peakTotalIntensity[idx, 0:dim2] = I[0,0:dim2]
+
+        self.Nhits += 1
 
 
 
