@@ -26,7 +26,7 @@ def presenter(print_function):
     # print """                                 THIS IS THE HIT FINDING MODULE OF"""
     #if log is None:
         """            	 						        """
-        print_function("""\n              ()_() v0.3.1                                                   """
+        print_function("""\n              ()_() v0.3.3                                                   """
         """\n  _   _       (o o)         _____           _       _____     _ _          """
         """\n | \ | |  ooO--`o'--Ooo    |  __ \         | |     / ____|   | | |         """
         """\n |  \| | __ _ _ __   ___   | |__) |__  __ _| | __ | |     ___| | |         """
