@@ -59,18 +59,20 @@ class FileSentinel(multiprocessing.Process):
             self.type=np.float64
 
         if self.options['HitFile'] is None:
-            print(self.options['shootntrap'])
-            print(self.options['nperposition'])
-            print(self.options['nempty'])
-
+            TotalN=0
             for filename in self.filenames:
+                #print(filename)
                 #Log("[%s] Opening %s"%(self.name, filename))
                 h5 = h5py.File(filename,'r')
                 try:
                     num_frames, res0, res1 = h5[self.h5path].shape
                     if self.options['shootntrap']:
-                        idx = [i for i in range(self.options['nempty']+1,num_frames,self.options['nperposition'])]
+
+                        idx_start = TotalN % self.options['nperposition'] + self.options['nempty']
+                        idx = [i for i in range(idx_start,num_frames,self.options['nperposition'])]
                         self.total += len(idx)
+                        TotalN += num_frames
+
                     else:
                         self.total += num_frames
                         idx = num_frames
