@@ -1,5 +1,3 @@
-import numpy as np
-import os
 import sys
 
 class ROI(object):
@@ -29,10 +27,10 @@ def InitDetector(args):
     import pyFAI
     detector = None
     if args['experiment'] == 'LCLS':
-        from Detectors import CSPAD
+        from NPC.Detectors import CSPAD
         return CSPAD()
     elif args['experiment'] == 'SACLA':
-        from Detectors import MPCCD
+        from NPC.Detectors import MPCCD
         return MPCCD()
     else:
         try:
@@ -52,7 +50,6 @@ def GetOverload(det):
     for key, value in OVL.iteritems():
         if key in det:
             return value
-
 
 
 class Correction(object):
