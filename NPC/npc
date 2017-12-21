@@ -7,34 +7,26 @@ except ImportError:
     import configparser as ConfigParser
 import os.path
 import sys
-import NPC.utils as utils
-import json
+from NPC.utils import parseBoolString, create_results_folders, check_input, get_result_folder_number, presenter
 
-def parseBoolString(s):
-    return s.strip().lower() in ('true', 't', 'yes', '1')
 
-CrystFEL = {'beam_divergence': (float, 1),
-            'pixel_size': (float, 100),
-            'beam_bandwidth': (float, 1e-4)}
 
-Mask = {
-    'detector': (str, None),
-}
+
 
 Experimental_Setup = {
-    'detector': (str, None),
-    'wavelength': (float, None),
-    'detector_distance': (float, None),
-    'beam_x': (float, None),
-    'beam_y': (float, None),
-    'mask': (str, None)}
+    'detector': (str, 'None'),
+    'wavelength': (float, 1.0),
+    'detector_distance': (float, 100),
+    'beam_x': (float, 1200),
+    'beam_y': (float, 1200),
+    'mask': (str, 'None')}
 
 Hit_Finding_Parameters = {'threshold': (int, 0),
                           'npixels': (int, 20),
-                          'bragg_search': (parseBoolString, False),
+                          'bragg_search': (parseBoolString, 'False'),
                           'bragg_threshold': (int, 10),
-                          'roi': (str, None),
-                          'shootntrap': (parseBoolString, False),
+                          'roi': (str, 'None'),
+                          'shootntrap': (parseBoolString, 'False'),
                           'nperposition': (int, 0),
                           'nempty': (int, 0)}
 
@@ -42,17 +34,17 @@ Hit_Finding_Parameters = {'threshold': (int, 0),
 General = {'experiment': (str, 'SSX'),
            'cpus': (int, 4),
            'parallelism': (str, 'multiprocessing'),
-           'background_subtraction': (str, None),
+           'background_subtraction': (str, 'None'),
            'randomizer': (int, 0),
-           'live': (parseBoolString, False)}
+           'live': (parseBoolString, 'False')}
 
 IO_SSX = {
-    'output_formats': (str, 'hdf5'),
-    'file_extension': (str, None),
-    'filename_root': (str, None),
-    'data': (str, None),
+    'output_formats': (list, []),
+    'file_extension': (str, 'None'),
+    'filename_root': (str, 'None'),
+    'data': (str, 'None'),
     'output_directory': (str, '.'),
-    'dark': (str, 'none')}
+    'dark': (str, 'None')}
 
 IO_SFX_SACLA = {'data': (str, None),
                 'runs': (str, None),
@@ -127,6 +119,7 @@ class NpcGenericParser(ConfigParser.RawConfigParser):
         if unique and len(new_option) > 1:
             raise ValueError("Error. Unique selection only for option '{}'  (Your choice: {})".format(option,opt))
 
+
         else:
             self.mapping[dic][option] = ' '.join(new_option)
 
@@ -151,15 +144,15 @@ class NpcGenericParser(ConfigParser.RawConfigParser):
         :param dic: global dictionary to be modified
         """
         options = self.options(section)
-        for option in options:
-            try:
-                built_in, default = dic[option]
-                try:
-                    dic[option] = built_in(self.get(section, option))
-                except ValueError:
-                    print("Exception on {0}! - Default value instead: {1}".format(option, default))
-                    dic[option] = default
-            except KeyError: print("Error in section {}. Option {} not recognized".format(section, option))
+        for option in dic.keys():
+            built_in, default = dic[option]
+            if option in options:
+                dic[option] = built_in(self.get(section, option))
+                options.remove(option)
+            else:
+                #print("Exception on {0}! - Default value instead: {1}".format(option, default))
+                dic[option] = built_in(default)
+            #except KeyError: print("Error in section {}. Option {} not recognized".format(section, option))
 
 
 def get_param(s):
@@ -172,6 +165,41 @@ def get_param(s):
     params = [sub.strip('*') for sub in s.split() if '*' in sub]
     return params
 
+def startMPI(options):
+    from mpi4py import MPI
+
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+    assert size > 1, 'At least 2 MPI ranks required'
+    numClients = size - 1
+
+    if rank == 0:
+        presenter()
+        valid, m = check_input(options)
+        if valid:
+            from mpi.NPC_master import runmaster
+            create_results_folders(options)
+            shutil.copyfile(config_file, os.path.join(results, os.path.basename(config_file)))
+            runmaster(numClients, options)
+        else:
+            print(m)
+    else:
+        valid, m = check_input(options)
+        if valid:
+
+            from mpi import NPC_client
+            if options['experiment'] == 'SSX':
+                if options['file_extension'] == '.h5':
+                    Client = getattr(NPC_client, '%s_H5_Client' % options['experiment'])(options)
+                else:
+                    Client = getattr(NPC_client, '%sClient' % options['experiment'])(options)
+
+
+            Client.run()
+        else:
+            pass
+    MPI.Finalize()
 
 if __name__ == '__main__':
 
@@ -196,20 +224,26 @@ if __name__ == '__main__':
             for key in npc_parser.mapping:
 
                 options.update(npc_parser.mapping[key])
-            options['num'] = utils.get_result_folder_number(options)
-            utils.create_results_folders(options)
+            options['num'] = get_result_folder_number(options)
             results = os.path.join(options['output_directory'], 'NPC_run%s' %options['num'].zfill(3))
             options['json_file'] = os.path.join(results, 'NPC_params.json')
 
-            #print(options)
-            #exit()
-            shutil.copyfile(config_file, os.path.join(results, os.path.basename(config_file)))
-
             if options['parallelism'] == 'MPI':
-                from NPC.PreProcessing import DataProcessingMPI as DataProc
+                startMPI(options)
             else:
-                from NPC.PreProcessing import DataProcessingMultiprocessing as DataProc
-            Process = DataProc(options)
-            Process.run()
+                valid, m = check_input(options)
+                if valid:
+
+                    create_results_folders(options)
+                    shutil.copyfile(config_file, os.path.join(results, os.path.basename(config_file)))
+                    from NPC.PreProcessing import DataProcessingMultiprocessing as DataProc
+                    Process = DataProc(options)
+                    Process.run()
+                else:
+                    presenter()
+                    print(m)
+
+
+
         else:
             print("Sorry: NPC configuration file not found (%s)"%config_file)
