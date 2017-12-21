@@ -3,9 +3,9 @@ from multiprocessing import Process
 import pyqtgraph as pg
 import zmq
 from PyQt4 import  QtGui, QtCore
-from Views import ImageView, XPView, HitLive, MaxProjView
+from NPC.gui.Views import ImageViewOnline, XPView, HitLive, MaxProjViewOnline
 
-from NPC.gui.online.EigerLive_process import loadBalancer, worker_debug
+from NPC.gui.online.EigerLive_process import loadBalancer, workerEiger
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 app = QtGui.QApplication([])
@@ -141,9 +141,10 @@ class LiveEiGerController(object):
 
         self.HitLiveView = HitLive(self, self.resultsReceiver, self.controlSender)
         self.XPView = XPView(True)
-        self.ImageView = ImageView(self.XPView, imgSocket, 2, req = "HIT", timeout = 250, name='ImageView')
+        self.ImageView = ImageViewOnline(self.XPView, binning=2, name='ImageView', zmqSocket = imgSocket, req = "HIT", timeout = 250)
+        #XPView, binning, name, imgSocket, req, timeout
         self.ImageView.setWindowTitle("NPC - Frames")
-        self.MaxProjView = MaxProjView(self.XPView, maxProjSocket, self.binning, req = "MAXPROJ", timeout = 2000, name='MaxProj')
+        self.MaxProjView = MaxProjViewOnline(self.XPView, binning=1, name='MaxProj', zmqSocket=maxProjSocket, req = "MAXPROJ", timeout = 2000)
         self.MaxProjView.setWindowTitle("NPC - Maximum Projection")
 
         self.menuBar = LiveMenuBar(self.ImageView, self)
@@ -444,15 +445,13 @@ class ArgumentParser(argparse.ArgumentParser):
 
 if __name__ == '__main__':
     import sys
-
     parser = ArgumentParser()
-
     if parser._check_input():
 
         HF = HitFinderParameters(parser)
         worker_pool = range(parser.cpus)
         for wrk_num in range(len(worker_pool)):
-            Process(target=worker_debug, args=(wrk_num,HF)).start()
+            Process(target=workerEiger, args=(wrk_num,HF)).start()
 
         #Process(target=ventilator, args=()).start()
         myapp = LiveEiGerController(app, HF)

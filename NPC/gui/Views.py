@@ -2,7 +2,7 @@ import numpy as np, h5py
 import pyFAI
 import pyqtgraph as pg
 import zmq
-from NPC.gui.ROIViewBow import CustomViewBox
+from NPC.gui.NPC_Widgets import CustomViewBox
 from NPC.utils import get_class, parseHits
 from PyQt4.QtCore import pyqtSignal
 from PyQt4.QtGui import QMainWindow, QWidget, QIcon, QColor, QFileDialog, QCloseEvent
@@ -388,13 +388,11 @@ class ImageView(QMainWindow):
     closeSignal = pyqtSignal(QCloseEvent)
     raiseAll = pyqtSignal(str)
     visible = True
-    #hideMe = pyqtSignal(str)
 
 
-    def __init__(self, XPView, imgSocket, binning, req, timeout, name):
+    def __init__(self, XPView, binning, name):
         super(ImageView, self).__init__()
         self.ui = MainWindow_ui.Ui_MainWindow()
-        self.request = req
         self.name = name
         self.mouse = False
         self.ui.setupUi(self)
@@ -411,7 +409,6 @@ class ImageView(QMainWindow):
 
         # Setting up our ImageItem for pyqtgraph
         self.view = NPGViewBox(parent=self, binning= self.binning)
-        #self.view.sigMouseClicked.connect(self.getIntensities)
         self.ui.graphicsView.setCentralItem(self.view)
 
         #These bindings are not in the controller as they immediately change the view
@@ -427,32 +424,7 @@ class ImageView(QMainWindow):
         self.XPView.ui.Detector.currentIndexChanged.connect(self.setDetector)
 
         self.proxy = pg.SignalProxy(self.view.scene().sigMouseMoved, rateLimit=30, slot=self.mouseMoved)
-        #self.setImg(np.ones((2048, 2048)))
 
-        self.imgSocket = imgSocket
-        if self.imgSocket is not None:
-            self.sendReq = True
-            self.imgTimer = QtCore.QTimer()
-            self.imgTimer.timeout.connect(self.sendRequest)
-            self.imgTimer.start(timeout)
-
-    def proc(self, data):
-        self.setImg(data)
-
-    def sendRequest(self):
-        if self.sendReq:
-            self.imgSocket.send(self.request)
-            self.sendReq = False
-        try:
-            md = self.imgSocket.recv_json(zmq.NOBLOCK)
-            data = self.imgSocket.recv(copy=False, track=False)  # flags=zmq.NOBLOCK)
-            buf = buffer(data)
-            A = np.frombuffer(buf, dtype=md['dtype']).reshape(md['shape'])
-            self.proc(A)
-            self.sendReq = True
-
-        except:
-            pass
 
     def setAttr(self):
         try:
@@ -516,8 +488,6 @@ class ImageView(QMainWindow):
                              self.shape[1] - self.XPView.by,
                              self.XPView.bx,
                              self.XPView.by)
-            #print max_radius
-            #print(self.XPView.bx, self.XPView.by, max_radius, self.shape[1], self.shape[0])
             increment = max_radius / (4. * self.binning)
             for i in range(4):
                 radius = increment * (i + 1)
@@ -586,7 +556,7 @@ class ImageView(QMainWindow):
         dim1Out = shapeIn[0] // self.binning
         dim2Out = shapeIn[1] // self.binning
 
-        #shapeOut = (shapeIn[0] // self.binning, shapeIn[1] / self.binning)
+
         temp = data[0:dim1Out * self.binning, 0:dim2Out * self.binning].astype("float32")
         temp.shape = (dim1Out, self.binning, dim2Out, self.binning)
         return temp.max(axis=3).max(axis=1).astype(data.dtype)
@@ -654,17 +624,53 @@ class ImageView(QMainWindow):
         self.close()
 
 
-class MaxProjView(ImageView):
+class ImageViewOnline(ImageView):
+
+    def __init__(self, XPView, binning, name, zmqSocket, req, timeout):
+        super(ImageViewOnline, self).__init__(XPView, binning, name)
+
+        self.zmqSocket = zmqSocket
+        self.request = req
+        self.timeout = timeout
+        self.sendReq = True
+
+        self.imgTimer = QtCore.QTimer()
+        self.imgTimer.timeout.connect(self.sendRequest)
+        self.imgTimer.start(timeout)
+
+    def proc(self, data):
+        self.setImg(data)
+
+    def sendRequest(self):
+        if self.sendReq:
+            self.zmqSocket.send(self.request)
+            self.sendReq = False
+        try:
+            md = self.zmqSocket.recv_json(zmq.NOBLOCK)
+            data = self.zmqSocket.recv(copy=False, track=False)
+            buf = buffer(data)
+            A = np.frombuffer(buf, dtype=md['dtype']).reshape(md['shape'])
+            self.proc(A)
+            self.sendReq = True
+
+        except:
+            pass
+
+
+
+class MaxProjViewOnline(ImageViewOnline):
 
 
     visible = True
     hideMe = pyqtSignal(str)
     sigResetMP = pyqtSignal()
 
-    def __init__(self, XPView, imgSocket, binning, req, timeout, name):
-        super(MaxProjView, self).__init__(XPView, imgSocket, binning, req, timeout, name)
-        #self.ui = MainWindow_ui.Ui_MainWindow()
+    def __init__(self, XPView, binning, name, zmqSocket, req, timeout):
+        super(MaxProjViewOnline, self).__init__(XPView, binning, name, zmqSocket, req, timeout)
+
         self.MP = np.zeros((2167, 2070))
+
+        ###Adding some extra widgets
         self.ui.layoutWidget.setGeometry(QtCore.QRect(10, 30, 209, 211))
         self.ui.groupBox.setMinimumSize(QtCore.QSize(220, 260))
         self.ui.groupBox.setMaximumSize(QtCore.QSize(220, 260))
@@ -1305,19 +1311,40 @@ class HitLive(NPGWidget):
         self.ui.ROIX2.editingFinished.connect(self.getROI)
         self.ui.ROIY1.editingFinished.connect(self.getROI)
         self.ui.ROIY2.editingFinished.connect(self.getROI)
-
+        self.ui.FastScan.toggled.connect(self.OnFastScanToggled)
+        self.ui.ShootNTrap.toggled.connect(self.OnShootNTrapToggled)
+        self.ui.NShots.editingFinished.connect(self.setNShots)
 
         self.zmqTimer.start(250)
         self.plotTimer.start(1000)
 
 
     def clearHitRate(self):
-
         self.hr_data = np.zeros(100)
         #self.processed_img.fill(0)
         #self.hits.fill(0)
         self.HiteRateItem.setData([0])
         self.count_temp = 0
+
+    def OnFastScanToggled(self):
+        self.controlSender.send_json({"RADDAM" : False})
+        #self.ui.NShots.setDisabled(True)
+
+    def OnShootNTrapToggled(self):
+        try:
+            NShots = int(self.ui.NShots.text())
+            self.controlSender.send_json({"RADDAM": True, "NShots": NShots})
+        except ValueError:
+            print("Please use an integer for this parameter...")
+
+    def setNShots(self):
+        try:
+            NShots = int(self.ui.NShots.text())
+            self.controlSender.send_json({"NShots": NShots})
+        except ValueError:
+            print("Please use an integer for this parameter...")
+
+
 
     def setThreshold(self):
         try:
@@ -1325,8 +1352,10 @@ class HitLive(NPGWidget):
             self.controlSender.send_json({"threshold" : thresh})
             #Log("HitFinding Threshold value changed to %i"%self.HFParams.threshold.value)
         except ValueError:
+            print("Please use an integer for this parameter...")
+
             #Log("Threshold value should be an integer")
-            self.ui.thresh.setText(str(self.HFParams.threshold.value))
+            #self.ui.thresh.setText(str(self.HFParams.threshold.value))
 
     def setNPixels(self):
         try:

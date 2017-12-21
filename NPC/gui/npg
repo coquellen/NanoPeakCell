@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from PyQt4 import QtGui, QtCore
-import pyqtgraph as pg
+
 import os
 from NPC.gui.Views import ImageView, XPView, TreeFileView, HitFindingView, TableWidget
 from NPC.gui.Models import NPGData
@@ -12,6 +12,7 @@ from NPC.PreProcessing import DataProcessingMultiprocessing as DataProc
 from PyQt4.QtCore import pyqtSignal
 import shutil
 import glob
+
 app = QtGui.QApplication([])
 from NPC.gui.ZmqSockets import NPGPull
 
@@ -123,7 +124,7 @@ class NPGController(object):
         self.binning = 2
         self.settings = QtCore.QSettings('Mycompany', 'NPG')
         self.XPView = XPView(False)
-        self.ImageView = ImageView(self.XPView, None, self.binning, req= "HIT", timeout= 100, name='ImageView')
+        self.ImageView = ImageView(self.XPView, binning= self.binning, name=ImageView)
         self.TreeFileView = TreeFileView()
         self.HitFindingView = HitFindingView(self)
         self.Table = TableWidget()
