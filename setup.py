@@ -10,7 +10,7 @@ setup(
 	author        =   "Nicolas Coquelle",
 	author_email  =   "coquelleni@ill.fr",
 	packages      =   find_packages(),
-    package_data={'NPC': ['bitmaps/*','gui/cmaps/*','gui/icons/*']},
+    package_data={'NPC': ['bitmaps/*','gui/cmaps/*','gui/icons/*', 'mpi/*']},
 	scripts = ['NPC/npc','NPC/gui/npg'],
 
     ext_modules=[
