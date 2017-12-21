@@ -71,7 +71,9 @@ class Correction(object):
             else:
                 return 2
         else:
-            self.openDark()
+            if not self.openDark():
+                self.args['dark'].lower() == 'none'
+                self.Dark()
             if self.AI is None:
                 return 1
             else:
@@ -80,22 +82,32 @@ class Correction(object):
     def Mask(self):
         if self.args['mask'].lower() == 'none':
             self.mask = -1 * (self.detector.mask - 1)
-            return 0
+            return
         else:
             self.openMask()
-            return 1
+            if not self.openMask():
+                self.args['mask'].lower() == 'none'
+                self.Mask()
+            return
 
     def openDark(self):
         import h5py
         h51 = h5py.File(self.args['dark'], 'r')
         self.dark = h51['data'][:]
         h51.close()
+        if self.dark.shape != self.detector.shape:
+            return False
+        else: return True
 
     def openMask(self):
         import h5py
         h51 = h5py.File(self.args['mask'], 'r')
         self.mask = -1 * (h51['data'][:] - 1)
         h51.close()
+        if self.mask.shape != self.detector.shape:
+            return False
+        else:
+            return True
 
 
     def NoCorrection(self, img):
