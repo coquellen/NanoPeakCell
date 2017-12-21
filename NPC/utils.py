@@ -2,31 +2,60 @@ import os
 import sys
 import importlib
 import glob
-import time
+import time, errno
+
+def parseBoolString(s):
+    """
+    Helper function to convert string to bool
+    :param s: string to be converted to bool
+    :return: bool
+    """
+    return s.strip().lower() in ('true', 't', 'yes', '1')
 
 def Log(message):
+    """
+    :param message: string
+    :return: modified string with time in front of it
+    """
     message = time.strftime("[%H:%M:%S] ") + message
     print(message)
 
+def startup(options):
+    presenter()
 
-def get_class(module_name, class_name):
-    m = importlib.import_module(module_name)
-    c = getattr(m, class_name)
-    return c
+def check_input(options):
+    """
+    Will check the user input to make sur it is worth starting the all process...
+    :param options: dictionary of options from the user input file
+    :return: bool, message
+    """
+    # Check that the input directory file exists
+    if not os.path.exists(options['output_directory']):
+        print("Output directory does not exist - Creating it")
+        mkdir_p(options['output_directory'])
+    if not os.path.exists(options['data']):
+        return False, "Error: No such directory: %s" % options['data']
+    elif options['shootntrap'] and options['HitFile'] is not None:
+        return False, "Error: you cannot provide a hit list file with the shootntrap option turned on."
+    else:
+        return True, ""
 
-def startup(options, print_function):
-
-    presenter(print_function)
-    #create_results_folders(options)
-    #save_stats(options)
+def mkdir_p(self, path):
+        try:
+            os.makedirs(path)
+        except OSError as exc:
+            if exc.errno == errno.EEXIST and os.path.isdir(path):
+                pass
+            else:
+                raise
 
 
 # ===================================================================================================================
-def presenter(print_function):
+def presenter():
     # print """                                 THIS IS THE HIT FINDING MODULE OF"""
     #if log is None:
         """            	 						        """
-        print_function("""\n              ()_() v0.3.3                                                   """
+        print("""\n              ()_() v0.3.3                                                   """
         """\n  _   _       (o o)         _____           _       _____     _ _          """
         """\n | \ | |  ooO--`o'--Ooo    |  __ \         | |     / ____|   | | |         """
         """\n |  \| | __ _ _ __   ___   | |__) |__  __ _| | __ | |     ___| | |         """
@@ -42,8 +71,6 @@ def presenter(print_function):
 def get_result_folder_number(options):
 
     results_folder = options['output_directory']
-
-
     num_folders = [int(x[-3:]) for x in glob.glob1(results_folder,"NPC_run*")]
     if len(num_folders) == 0:
         num = '1'
