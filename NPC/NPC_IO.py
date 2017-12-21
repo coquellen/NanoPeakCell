@@ -2,18 +2,18 @@ import h5py
 import numpy as np
 from libtbx import easy_pickle
 from scitbx.array_family import flex
-from NPC_CBF import write
+from NPC.NPC_CBF import write
 import os
-from NPC_routines import dpack
+from NPC.NPC_routines import dpack
 
 class SaveHits(object):
     formats = []
     def __init__(self, args):
         self.args = args
-        for format in self.args.formats:
-            if self.args.TimeResolved:
-                format += '_TR'
-            self.formats.append(globals()[format](self.args))
+        for format in self.args['output_formats'].split():
+            #if self.args[TimeResolved:
+            #    format += '_TR'
+            self.formats.append(globals()[format.upper()](self.args))
 
     def saveHit(self,img, fn):
         fout = self.getOutputFilename(fn)
@@ -35,35 +35,43 @@ class CBF(object):
         self.args = args
 
     def SaveHit(self,img,fout):
-        OutputFilename = os.path.join(self.args.procdir,'CBF', '%s.cbf'%fout)
-        write(OutputFilename, img)
+        OutputFilename = os.path.join(self.args['output_directory'],
+                                      'NPC_run%s' %self.args['num'].zfill(3),
+                                      'CBF',
+                                      '%s.cbf'%fout)
+        write(OutputFilename, img.astype(np.int32))
 
 
 class HDF5(object):
     def __init__(self, args):
         self.args = args
         self.NframesPerH5 = 100
-        self.size0 = args.detector.shape[0]
-        self.size1 = args.detector.shape[1]
+        self.size0, self.size1 = args['shape']
 
-        FileName = os.path.join(self.args.procdir, 'HDF5', "%s_%i_0.h5" % (self.args.output_root, self.args.rank))
+        #Carefull - the filename_root is only there with SSX
+        FileName = os.path.join(self.args['output_directory'],
+                                'NPC_run%s' %self.args['num'].zfill(3),
+                                'HDF5', "%s_%i_0.h5" % (self.args['filename_root'].strip('_'), self.args['rank']))
         self.h5 = h5py.File(FileName)
         self.dset = self.h5.create_dataset("data", (self.NframesPerH5, self.size0, self.size1), compression='gzip',
                                            chunks=(1, self.size0, self.size1))
 
         self.Nhits = 0
+        #if self.args.experiment == 'LCLS':
+        #    self.Edset = self.h5.create_dataset("energy", (self.NframesPerH5,))
 
-    def SaveHit(self,img,fout):
+    def SaveHit(self,img, fout):
         self.dset[self.Nhits % self.NframesPerH5, ::] = img
+        #if self.args.experiment == 'LCLS':
+        #   self.Edset[self.Nhits % self.NframesPerH5] = energy
         self.Nhits += 1
         if self.Nhits % self.NframesPerH5 == 0:
             self.h5.close()
-            fn = os.path.join(self.args.procdir, 'HDF5',
-                              "%s_%i_%i.h5" % (self.args.output_root,
-                                                  self.args.rank,
-                                                  self.Nhits / self.NframesPerH5))
+            FileName = os.path.join(self.args['output_directory'],
+                                    'NPC_run%s' % self.args['num'].zfill(3),
+                                    'HDF5', "%s_%i_%i.h5" % (self.args['filename_root'].strip('_'), self.args['rank'], self.Nhits / self.NframesPerH5))
 
-            self.h5 = h5py.File(fn)
+            self.h5 = h5py.File(FileName)
             self.dset = self.h5.create_dataset("data", (self.NframesPerH5, self.size0, self.size1), compression='gzip',
                                                chunks=(1, self.size0, self.size1))
 
@@ -71,6 +79,8 @@ class HDF5(object):
     def CloseH5(self):
         shape = (self.Nhits % self.NframesPerH5, self.size0, self.size1)
         self.dset.resize(shape)
+        #if self.args.experiment == 'LCLS':
+        #  self.Edset.resize(self.Nhits % self.NframesPerH5)
         self.h5.close()
 
 

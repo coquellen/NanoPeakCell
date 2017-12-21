@@ -9,10 +9,6 @@ import os.path
 import sys
 from NPC.utils import parseBoolString, create_results_folders, check_input, get_result_folder_number, presenter
 
-
-
-
-
 Experimental_Setup = {
     'detector': (str, 'None'),
     'wavelength': (float, 1.0),
@@ -178,7 +174,7 @@ def startMPI(options):
         presenter()
         valid, m = check_input(options)
         if valid:
-            from mpi.NPC_master import runmaster
+            from NPC.mpi.NPC_master import runmaster
             create_results_folders(options)
             shutil.copyfile(config_file, os.path.join(results, os.path.basename(config_file)))
             runmaster(numClients, options)
@@ -188,7 +184,7 @@ def startMPI(options):
         valid, m = check_input(options)
         if valid:
 
-            from mpi import NPC_client
+            from NPC.mpi import NPC_client
             if options['experiment'] == 'SSX':
                 if options['file_extension'] == '.h5':
                     Client = getattr(NPC_client, '%s_H5_Client' % options['experiment'])(options)
