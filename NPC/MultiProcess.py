@@ -2,13 +2,12 @@ from __future__ import print_function
 import multiprocessing
 import fabio
 import h5py
-from .utils import Log
 import time
 import numpy as np
 import os
 from .Braggs import find_peaks
 from .NPC_CBF import write as write_CBF
-from mpi.NPC_routines import InitDetector, ROI
+from NPC.NPC_routines import ROI
 
 # Carefull 3.5
 try:
