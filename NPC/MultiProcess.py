@@ -2,12 +2,13 @@ from __future__ import print_function
 import multiprocessing
 import fabio
 import h5py
-from .utils import Log, get_filenames
+from .utils import Log
 import time
 import numpy as np
 import os
 from .Braggs import find_peaks
 from .NPC_CBF import write as write_CBF
+from mpi.NPC_routines import InitDetector, ROI
 
 # Carefull 3.5
 try:
@@ -147,23 +148,14 @@ class HitManager(object):
 
 class MProcess(multiprocessing.Process):
 
-
-
-    def __init__(self, task_queue, result_queue, options, detector, ai, MShemArray, name, npg=None):
+    def __init__(self, task_queue, result_queue, options, ai, detector, name):
         multiprocessing.Process.__init__(self)
-
-        self.npg = npg
         self.name = name
-        self.hitsignal = Signals()
-        self.name = name
-        self.kill_received = False
         self.task_queue = task_queue
         self.result_queue = result_queue
         self.options = options
         self.detector = detector
         self.AzimuthalIntegrator = ai
-        self.signal = True
-        self.MShemArray = MShemArray
         self.count = 0
         self.Nhits = 0
         self.NFramesPerH5 = 100
@@ -177,22 +169,12 @@ class MProcess(multiprocessing.Process):
                            'pickles': ['PICKLES', 'pickle', self.savePickle]}
 
         #Defining ROI
-        if self.options['roi'].lower() == 'none' :
-            self.xmax, self.ymax = self.detector.shape
-            self.xmin, self.ymin = 0, 0
-            self.ActiveROI = False
+        # This should be done in an object
+        # See in mpi NPC_Routines
+        self.roi = ROI(self.options, self.detector.shape)
 
-        else:
-            y1, x1, y2, x2 = self.options['roi'].split()
-            self.xmax = max(int(x1), int(x2))
-            self.xmin = min(int(x1), int(x2))
-            self.ymax = max(int(y1), int(y2))
-            self.ymin = min(int(y1), int(y2))
-            self.ActiveROI = True
 
-        self.options['ROI_tuple'] = (self.xmin, self.xmax, self.ymin, self.ymax)
-        self.roi = self.options['ROI_tuple']
-
+        #All this should be done in a
         if self.options['background_subtraction'].lower() != 'none':
             self.type = np.float32
             self.SubtractBkg = True
@@ -203,7 +185,7 @@ class MProcess(multiprocessing.Process):
         self.mask = self.getMask()
         self.dark = self.getCorrection(self.options['dark'])
 
-        self.data = np.zeros((self.xmax-self.xmin, self.ymax-self.ymin))
+        self.data = np.zeros((self.roi.xmax-self.roi.xmin, self.roi.ymax-self.roi.ymin))
 
         if self.options['dark'].lower() == 'none':
                 self.correctData = self.NoCorrect
@@ -261,7 +243,7 @@ class MProcess(multiprocessing.Process):
         return
 
     def shutDown(self):
-        print("Process %s received signal" % self.name)
+        #print("Process %s received signal" % self.name)
         self.exit.set()
 
     def exitProperly(self):
@@ -284,6 +266,7 @@ class MProcess(multiprocessing.Process):
 
     def isHit(self,filename):
 
+        #
         try:
             self.img = fabio.open(filename)
         except AssertionError:
@@ -291,9 +274,10 @@ class MProcess(multiprocessing.Process):
             self.img = fabio.open(filename)
 
         self.data = self.correctData(
-                    self.img.data[self.xmin:self.xmax, self.ymin:self.ymax].astype(np.int32),
+                    self.img.data[self.roi.xmin:self.roi.xmax, self.roi.ymin:self.roi.ymax].astype(np.int32),
                     self.dark,
                     self.roi)
+        #
 
         # BKG Sub using mask
         # TODO: Include it in the correctData part
@@ -307,19 +291,16 @@ class MProcess(multiprocessing.Process):
                                                          restore_mask=True)[0][:]
 
         # Masking Array
-        masked = np.ma.array(self.data, mask=self.mask[self.xmin:self.xmax, self.ymin:self.ymax])
-        #N = masked[masked > self.ovl].size
-        #if N > 0: print("WARNING: Found %i overloaded pixels - You might want to check your mask" % N)
+        masked = np.ma.array(self.data, mask=self.mask[self.roi.xmin:self.roi.xmax, self.roi.ymin:self.roi.ymax])
 
         # Hit Finding
         hit = int( np.count_nonzero(masked.compressed() > self.options['threshold']) >= self.options['npixels'])
 
         #Could delay that
         self.manager.add(hit, 1, filename, None)
-        #self.result_queue.put((hit, 1, filename))
 
         if len(self.options['output_formats'].split()) > 0 and hit > 0:
-            if self.ActiveROI:
+            if self.roi.active:
                 self.data = self.correctData(self.img.data,
                                              self.dark,
                                              (0, self.detector.shape[0], 0, self.detector.shape[1]))
@@ -368,7 +349,7 @@ class MProcess(multiprocessing.Process):
                          ccd_image_saturation=ovl,
                          saturated_value=ovl)
             easy_pickle.dump('%s.%s'%(OutputFileName,extStr), data)
-        #else: print('Ahhhh')
+
 
     def saveH5(self, OutputFileName,extStr):
         if self.Nhits % self.NFramesPerH5 == 0:
@@ -415,25 +396,20 @@ class MProcess(multiprocessing.Process):
 
     def getOvl(self):
         if 'pilatus' in self.detector.name.lower(): ovl = 1048500
-        if 'eiger' in self.detector.name.lower(): ovl = self.ovl
+        elif 'eiger' in self.detector.name.lower(): ovl = self.ovl
+        else: ovl = None
         return ovl
-
-    def OnStop(self):
-        try:
-            self.signal = False
-        except:
-            return
 
 
 class MProcessEiger(MProcess):
-    def __init__(self, task_queue, result_queue, options, detector, AzimuthalIntegrator, MShemArray, name, npg=None):
-        MProcess.__init__(self,  task_queue, result_queue, options, detector, AzimuthalIntegrator, MShemArray, name, npg)
+    def __init__(self, task_queue, result_queue, options, AzimuthalIntegrator, detector, name):
+        MProcess.__init__(self,  task_queue, result_queue, options, AzimuthalIntegrator, detector, name)
         self.h5 = None
         self.h5_filename = None
         self.NFramesPerH5 = 100
         self.h5out = None
         self.dset = None
-        self.data = np.zeros((self.xmax - self.xmin, self.ymax - self.ymin), dtype=self.type)
+        self.data = np.zeros((self.roi.xmax - self.roi.xmin, self.roi.ymax - self.roi.ymin), dtype=self.type)
         self.count = 0
         self.manager = HitManager(self.result_queue)
 
@@ -464,33 +440,33 @@ class MProcessEiger(MProcess):
                         unit="2th_deg",
                         percentile=50,
                         mask=self.mask,
-                        restore_mask=True)[0][self.xmin:self.xmax,self.ymin:self.ymax]
+                        restore_mask=True)[0][self.roi.xmin:self.roi.xmax,self.roi.ymin:self.roi.ymax]
 
             else:
 
-                self.data = self.correctData(self.h5[self.group][i,self.xmin:self.xmax,self.ymin:self.ymax].astype(np.int32),
+                self.data = self.correctData(self.h5[self.group][i,self.roi.xmin:self.roi.xmax,self.roi.ymin:self.roi.ymax].astype(np.int32),
                                          self.dark,
                                          self.options['ROI_tuple'])
             
 
 
             masked = np.ma.array(self.data,
-                                 mask=self.mask[self.xmin:self.xmax, self.ymin:self.ymax])
+                                 mask=self.mask[self.roi.xmin:self.roi.xmax, self.roi.ymin:self.roi.ymax])
 
 
             #Hit Finding
             hit = int( np.count_nonzero(masked.compressed() > self.options['threshold']) >= self.options['npixels'])
             self.manager.add(hit,1,'%s //%i' % (self.h5in,i), self.group)
-            #self.result_queue.put((hit, 1, '%s //%i' % (filename,i), self.group))
+
 
             if len(self.options['output_formats'].split()) > 0 and hit > 0:
-                if self.options['roi'].lower() != 'none':
+                if self.roi.active:
                     self.data = self.correctData(self.h5[self.group][i,::],
                                                  self.dark,
                                                  (0,self.detector.shape[0],0,self.detector.shape[1]))
 
                 self.saveHit(self.h5in,i)
-                #print('%s_%i'%(filename,i))
+
                 self.count += 1
         self.h5.close()
         return

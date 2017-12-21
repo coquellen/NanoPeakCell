@@ -7,22 +7,18 @@ try:
     import Queue
 except ImportError:
     import queue as Queue
-import pyFAI
-import pyFAI.detectors
 import numpy as np
 import h5py
-import fabio
 from .Azimuthal_Integrator import AI
 from . import utils
-from PyQt4 import QtCore
 from multiprocessing import Event
+from mpi.NPC_routines import InitDetector
 from .ZmqSockets import ZMQPush
 import zmq, json
 
 class FileSentinel(multiprocessing.Process):
     def __init__(self, task_queue, total_queue, options):
         multiprocessing.Process.__init__(self)
-        self.kill_received = False
         self.total_queue = total_queue
         self.tasks = task_queue
         self.options = options
@@ -61,13 +57,10 @@ class FileSentinel(multiprocessing.Process):
         if self.options['HitFile'] is None:
             TotalN=0
             for filename in self.filenames:
-                #print(filename)
-                #Log("[%s] Opening %s"%(self.name, filename))
                 h5 = h5py.File(filename,'r')
                 try:
                     num_frames, res0, res1 = h5[self.h5path].shape
                     if self.options['shootntrap']:
-
                         idx_start = TotalN % self.options['nperposition'] + self.options['nempty']
                         idx = [i for i in range(idx_start,num_frames,self.options['nperposition'])]
                         self.total += len(idx)
@@ -93,9 +86,7 @@ class FileSentinel(multiprocessing.Process):
                 self.total += len(self.options['HitFile'][filename])
 
         self.total_queue.put(self.total)
-        print(self.total)
         self.chunk = max(int(round(float(self.total) / 1000.)), 10)
-
         self.givePoisonPill()
 
     def visitor_func(self, name, node):
@@ -147,9 +138,6 @@ class FileSentinel(multiprocessing.Process):
             return
 
 
-class Signals(QtCore.QObject):
-    Stop =  QtCore.pyqtSignal(bool)
-    Job = QtCore.pyqtSignal(tuple)
 
 
 class DataProcessing(object):
@@ -157,27 +145,10 @@ class DataProcessing(object):
         # Common part
         self.options = options
         self.experiment = self.options['experiment']
-        self.init_detector()
+        self.detector = InitDetector(self.options)
         if self.options['background_subtraction'].lower() != 'none':
             self.ai = AI(self.options, self.detector)
         else: self.ai = None
-
-
-    def init_detector(self):
-        # This is as messy as hell !!!
-        self.detector = None
-        try:
-            detector_name = self.options['detector']
-            self.detector = pyFAI.detectors.Detector.factory(detector_name)
-        except RuntimeError:
-            print("This detector is not implemented in pyFAI / NPC - Please contact us")
-            sys.exit(1)
-        # elif self.options['experiment'] == 'SFX_SACLA':
-        #        from NPC.Detectors import MPCCD
-        #        self.detector = MPCCD()
-        # elif self.options['experiment'] == 'SFX_LCLS':
-        #        from NPC.Detectors import CSPAD
-        #        self.detector = CSPAD()
 
 
 class StatsManager(object):
@@ -188,7 +159,6 @@ class StatsManager(object):
         #self.socket = ZMQPush(host='127.0.0.1',port=5556,flags=zmq.NOBLOCK, verbose=False)
         self.initTxtFiles()
         self.t1 = time.time()
-        #self.signals = Signals()
         self.chunk = 20
         self.total = 0
         self.processed = 0
@@ -197,14 +167,10 @@ class StatsManager(object):
     def flush(self):
         percent = (float(self.processed) / self.total) * 100.
         hitrate = (float(self.hits) / float(self.processed)) * 100.
-        #self.signals.Job.emit((self.total, self.processed, self.hits))
         s = '     %6.2f %%       %5.1f %%    (%i out of %i images processed - %i hits)' % (
                 percent, hitrate, self.processed, self.total, self.hits)
-        #if self.log is None:
         print(s, end='\r')
         sys.stdout.flush()
-        #else:
-        #    self.print_function(s)
 
     def initTxtFiles(self):
         OutputFileName = os.path.join(self.options['output_directory'], 'NPC_run%s' % self.options['num'].zfill(3),
@@ -213,7 +179,6 @@ class StatsManager(object):
         self.outTxtRej = open('%s_rejected.txt' % OutputFileName, 'w')
 
     def getFinalResults(self):
-        #self.signals.Job.emit((self.total, self.processed, self.hits))
         self.options['total'] = self.total
         self.options['processed'] = self.processed
         self.options['hit'] = self.hits
@@ -231,10 +196,9 @@ class StatsManager(object):
         self.outTxtHit.close()
         self.outTxtRej.close()
         with open(self.options['json_file'],'w') as outfile:
-            print(outfile)
+
             json.dump(self.options, outfile)
-        self.socket.close()
-        #self.signals.Stop.emit(True)
+        #self.socket.close()
 
     def getResults(self):
         Nhit, N, fnsHit, fnsRej, path = self.resultsQueue.get(block=False, timeout=None)
@@ -268,177 +232,31 @@ class StatsManager(object):
         except:
             pass
 
-# Changed in the scope of NPC
-class DataProcessingMPI(DataProcessing):
-        def __init__(self, options, log=None, npg=None):
-            DataProcessing.__init__(self, options)
-            
-            try:
-                from mpi4py import MPI
-            except RuntimeError:
-                print('If you want to use the MPI option, please install OpenMPI and mpi4py')
-                sys.exit(1)
-            self.MPI = MPI
-            self.comm = MPI.COMM_WORLD
-            self.rank = self.comm.rank
-            self.size = self.comm.size
-
-
-
-            if self.rank == 0:
-                utils.startup(options)
-
-
-
-            self.HitFinder = HitFinder(self.options, self.detector, self.ai)
-
-            self.t1 = time.time()
-            self.total = 0
-            self.hit = 0
-            self.out = 0
-            self.signal = True
-            self.max_proj = np.zeros(self.detector.shape, np.int32)
-            self.avg = np.zeros_like(self.max_proj)
-
-            self.run_mapping = {'SSX' : self.run_ssx, 'SFX_SACLA' : self.run_sacla, 'SFX_LCLS' : self.run_lcls}
-            self.run_mapping[self.options['experiment']]()
-
-
-        def get_filenames(self):
-            if self.rank == 0:
-                self.filenames = self.get_filenames_mapping[self.experiment](self.options)
-                for i in range(1, self.size): self.comm.send(self.filenames, dest=i)
-
-            if self.rank != 0: self.filenames = self.comm.recv(source=0)
-
-        def run_ssx(self):
-            self.get_filenames()
-            if 'eiger' in self.options['detector'].lower(): self.run_eiger()
-            else:
-                self.total = len(self.filenames)
-                for idx in range(self.rank,self.total,self.size):
-                    fname = self.filenames[idx]
-                    self.HitFinder.data = fabio.open(fname).data
-                    hit, imgmax, imgmin, imgmed, peaks, working = self.HitFinder.get_hit(fname)
-                    if hit == 1:
-                        self.update_results(working)
-                self.get_final_stats()
-
-        def run_eiger(self):
-
-            self.get_filenames()
-            for filename in self.filenames:
-
-                h5=h5py.File(filename)
-                for key in h5['entry']:
-                    if 'data' in key:
-                        num_frames, res0, res1 = h5['entry/{}'.format(key)].shape
-                        self.total += num_frames
-                        myindexes = [j for j in range(num_frames) if (j+self.rank) % self.size == 0]
-                        for index in myindexes:
-                            self.HitFinder.data[:] = h5['entry/%s'%group][index,::]
-                            hit, imgmax, imgmin, imgmed, peaks,working = self.HitFinder.get_hit()
-                            if hit == 1:
-                                self.update_results(working)
-                h5.close()
-            self.get_final_stats()
-
-        def shutDown(self):
-            self.exit.set()
-
-        def getStats(self):
-            while True or self.statsManager.processed != self.statsManager.total:
-                try:
-                    self.statsManager.total = self.N_queue.get(block=False, timeout=None)
-                    self.statsManager.chunk = max(int(round(float(self.statsManager.total) / 1000.)), 20)
-                except Queue.Empty:
-                    pass
-
-                try:
-                    self.statsManager.getResults()
-
-                except Queue.Empty:
-                    break
-
-        def startFS(self):
-            self.FS.daemon = True
-            self.FS.start()
-
-        def update_results(self,working):
-                self.hit += 1
-                self.avg += working
-                maxids = np.where(working > self.max_proj)
-                self.max_proj[maxids] = working[maxids]
-
-        def get_final_stats(self):
-            t2 = time.time()
-            t_final = self.comm.reduce(t2-self.t1, op=self.MPI.SUM,root = 0)
-            hit_final = self.comm.reduce(self.hit, op=self.MPI.SUM,root = 0)
-            if self.rank == 0:
-                print('\nOverall, found %s hits in %s files --> %5.1f %% hit rate with a threshold of %s' % (
-                        hit_final, self.total, ((float(hit_final) / (self.total)) * 100.), self.options['threshold']))
-                t_final = t_final / self.size
-                print("Time to process {} frames on {} procs: {:4.2f} seconds (i.e {:4.2f} frames per second)".format(self.total,self.size,t_final,self.total/t_final))
-                avg_final = np.zeros_like(self.max_proj)
-                cleanmax = np.zeros_like(self.max_proj)
-                max_proj_final = np.zeros_like(self.max_proj)
-            else :
-                avg_final = None
-                max_proj_final = None
-            self.comm.Reduce([self.avg,self.MPI.INT], [avg_final, self.MPI.INT], op=self.MPI.SUM,root = 0)
-            self.comm.Reduce([self.max_proj,self.MPI.INT], [max_proj_final, self.MPI.INT], op=self.MPI.MAX,root = 0)
-
-            if self.rank == 0 and hit_final > 0:
-                avg_final = self.avg / hit_final
-                cleanmax = max_proj_final - self.avg
-                self.saveMaxProj(cleanmax,max_proj_final,avg_final)
-
-        def saveMaxProj(self,cleanmax,max_proj_final,avg_final):
-
-            output_directory=self.options['output_directory']
-            num = str(self.options['num']).zfill(3)
-            for output_format in self.options['output_formats'].split():
-                maxproj_directory = os.path.join(output_directory,"%s_%s"%(output_format.upper(),num),'MAX')
-
-                for data,root_name in ((cleanmax,'cleanmax'), (max_proj_final,'maxproj'), (avg_final,'avg')):
-                    if output_format == 'hdf5':
-                        output_filename = os.path.join(maxproj_directory,'%s.h5'%(root_name))
-                        image = h5py.File(output_filename)
-                        image.create_dataset("data", data=data, compression="gzip")
-                        image.close()
-
-                    elif output_format == 'pickles':
-                        pass
-
-                    else:
-                        image=utils.get_class('fabio.%simage'%output_format,'%simage'%output_format)(data=data)
-                        output_filename = os.path.join(maxproj_directory,'%s.%s'%(root_name,output_format))
-                        image.write(output_filename)
-
 
 class DataProcessingMultiprocessing(DataProcessing):
 
-    def __init__(self, options, log=None, npg = None):
+    def __init__(self, options, log=None):
         DataProcessing.__init__(self, options)
         self.log = log
-        self.npg = npg
-        self.signals = Signals()
         self.exit = Event()
 
-        utils.startup(self.options, print)
+        utils.startup(self.options)
+        # First queue - Send the jobs
         self.tasks = multiprocessing.JoinableQueue(maxsize=10000)
+        # Second one - Send the number of images to process
         self.N_queue = multiprocessing.Queue()
+        # Third one - the results
         self.results = multiprocessing.Queue()
+
+        # Process to look after the files
         self.FS = FileSentinel(self.tasks, self.N_queue, self.options)
 
+        # Real workers...
         if 'h5' in self.options['file_extension'].lower():
             from .MultiProcess import MProcessEiger as MProcess
         else: from .MultiProcess import MProcess
-
-        self.consumers = [
-            MProcess(self.tasks, self.results, self.options, self.detector,
-                          self.ai, None, name=str(i)) for i in range(self.options['cpus'])]
-
+        self.consumers = [ MProcess(self.tasks, self.results, self.options, self.ai, self.detector, name=str(i)) for i in range(self.options['cpus'])]
+        # Some stats
         self.statsManager = StatsManager(self.options, self.results)
 
     def run(self):
@@ -471,13 +289,12 @@ class DataProcessingMultiprocessing(DataProcessing):
         while True or self.statsManager.processed != self.statsManager.total:
             try:
                 self.statsManager.total = self.N_queue.get(block=False, timeout=None)
-                self.statsManager.chunk = max(int(round(float(self.statsManager.total) / 1000.)), 20)
+                self.statsManager.chunk = max(int(self.statsManager.total / 1000.), 20)
             except Queue.Empty:
                 pass
 
             try:
                 self.statsManager.getResults()
-
             except Queue.Empty:
                 break
 
@@ -491,9 +308,6 @@ class DataProcessingMultiprocessing(DataProcessing):
         for w in self.consumers:
             w.start()
 
-    #def startDisplay(self):
-    #    self.DR = DisplayResults(self.N_queue, self.results, self.options, self.log)
-    #    self.DR.start()
 
     # def saveMaxProj(self,cleanmax,max_proj_final,avg_final):
     #         #Not used anymore
