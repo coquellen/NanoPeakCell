@@ -142,6 +142,7 @@ class HitManager(object):
         self.Nhit = 0
         self.N = 0
         self.fnsHit = ''
+        self.fnsRej = ''
         self.group = None
 
 
