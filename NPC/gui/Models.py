@@ -4,13 +4,13 @@ try:
     import cPickle
 except:
     import _pickle as cPickle
-import os, sys
+import os
 from PyQt4.QtCore import  pyqtSignal, QObject
 
 import numpy as np
 from NPC.gui.geom import reconstruct, parse_geom_file, getGeomTransformations
 import NPC.gui.peakfind as pf
-#from ZmqSockets import ZMQPull
+
 
 
 def visitor_func(h5):
@@ -20,11 +20,11 @@ def visitor_func(h5):
             if len(node.shape) == 2 and node.size > 512 * 512:
                 t = (1, node.shape[0], node.shape[1])
                 return node.name, t
-                # self.h5_dic[self.filename].append((node.name, t))
+
 
             if len(node.shape) == 3 and node.shape[1] * node.shape[2] > 512 * 512:
                 return node.name, node.shape
-                # self.h5_dic[self.filename].append((node.name, node.shape))
+
 
         else:
             visitor_func(node)

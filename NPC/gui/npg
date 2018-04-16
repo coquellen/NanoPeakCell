@@ -582,7 +582,10 @@ class NPGController(object):
         jsonFile = os.path.expanduser('~/.NPGrc.json')
 
         if os.path.exists(jsonFile):
-            settings = json.loads(open(jsonFile).read())
+            try:
+              settings = json.loads(open(jsonFile).read())
+            except:
+              return
         else:
             return
 

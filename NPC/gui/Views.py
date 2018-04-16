@@ -9,7 +9,7 @@ from PyQt4.QtGui import QMainWindow, QWidget, QIcon, QColor, QFileDialog, QClose
 from pyqtgraph import functions as fn
 from pyqtgraph.graphicsItems.ROI import Handle as pgHandle
 from NPC.gui.Frame import TreeFactory
-from NPC.gui.ui import MainWindow_NoMenu_ui as MainWindow_ui, FileTree_ui, XP_Params_ui, HitFinding_ui, LiveHF, Runs_ui
+from NPC.gui.ui import MainWindow_NoMenu_ui as MainWindow_ui, FileTree_ui, XP_Params_ui, HitFinding_ui, LiveHF, Runs_ui, Geom_ui
 from PyQt4 import QtGui, QtCore
 import os, json, time
 import pkg_resources as pkg
@@ -292,11 +292,12 @@ class NPGViewBox(CustomViewBox):
                       ]
 
 
-    def __init__(self, parent, binning):
+    def __init__(self, parent, binning,nRings=4):
         super(NPGViewBox, self).__init__(parent, invertY=True)
         self.parent = parent
         self.color = self.color_mapping[0]
         self.binning = binning
+        self.nRings = nRings
         self.vmin = 0
         self.vmax = 10
         self.pen = pg.mkPen(self.color, width=2, style=QtCore.Qt.SolidLine)
@@ -315,9 +316,9 @@ class NPGViewBox(CustomViewBox):
 
         self.beam = BeamCenter(self.filledBrush)
         self.addItem(self.beam)
-        self.rings = [ResolutionRing(self.pen) for i in range(4)]
-        self.ringsTxt = [ResolutionTxt(self.color) for i in range(4)]
-        for i in range(4):
+        self.rings = [ResolutionRing(self.pen) for i in range(nRings)]
+        self.ringsTxt = [ResolutionTxt(self.color) for i in range(nRings)]
+        for i in range(nRings):
             self.addItem(self.rings[i])
             self.addItem(self.ringsTxt[i])
 
@@ -349,7 +350,7 @@ class NPGViewBox(CustomViewBox):
         self.roi.handle.hoverColor = colorHoverMapping[idx]
         self.roi.handle.update()
 
-        for i in range(4):
+        for i in range(self.nRings):
             self.rings[i].setPen(self.pen)
             self.ringsTxt[i].setColor(self.QColor)
 
@@ -390,13 +391,12 @@ class ImageView(QMainWindow):
     visible = True
 
 
-    def __init__(self, XPView, binning, name):
+    def __init__(self, XPView, binning, name,nRings=4):
         super(ImageView, self).__init__()
         self.ui = MainWindow_ui.Ui_MainWindow()
         self.name = name
-        self.mouse = False
         self.ui.setupUi(self)
-
+        self.nRings = nRings
         self.ui.Stream.hide()
         self.XPView = XPView
         self.binning = binning
@@ -408,7 +408,7 @@ class ImageView(QMainWindow):
 
 
         # Setting up our ImageItem for pyqtgraph
-        self.view = NPGViewBox(parent=self, binning= self.binning)
+        self.view = NPGViewBox(parent=self, binning= self.binning, nRings=self.nRings)
         self.ui.graphicsView.setCentralItem(self.view)
 
         #These bindings are not in the controller as they immediately change the view
@@ -488,8 +488,8 @@ class ImageView(QMainWindow):
                              self.shape[1] - self.XPView.by,
                              self.XPView.bx,
                              self.XPView.by)
-            increment = max_radius / (4. * self.binning)
-            for i in range(4):
+            increment = max_radius / (float(self.nRings) * self.binning)
+            for i in range(self.nRings):
                 radius = increment * (i + 1)
                 x = float(self.XPView.bx / self.binning) - radius
                 y = float(self.XPView.by / self.binning) - radius
@@ -657,7 +657,6 @@ class ImageViewOnline(ImageView):
             pass
 
 
-
 class MaxProjViewOnline(ImageViewOnline):
 
 
@@ -774,6 +773,43 @@ class XPView(NPGWidget):
             self.hide()
             self.visible = False
             self.hideMe.emit('actionExperimental_Settings')
+            self.Pos = self.pos()
+        else:
+            self.close()
+
+
+class CsPADGeom(NPGWidget):
+
+    name = 'CsPADGeom'
+
+    def __init__(self):
+        super(CsPADGeom, self).__init__(name=self.name)
+        self.ui = Geom_ui.Ui_QuadControl()
+        self.ui.setupUi(self)
+        self.show()
+
+
+    def getQuadrantStatus(self):
+        q0 = self.ui.Quadrant0.isChecked()
+        q1 = self.ui.Quadrant1.isChecked()
+        q2 = self.ui.Quadrant2.isChecked()
+        q3 = self.ui.Quadrant3.isChecked()
+
+        return [q0,q1,q2,q3]
+
+    def getIncrement(self):
+        try:
+            inc = int(self.ui.lineEdit.text())
+            return inc
+        except ValueError:
+            print "The increment should be an integer"
+            return
+
+    def closeEvent(self, evt):
+        if evt.spontaneous():
+            self.hide()
+            self.visible = False
+            self.hideMe.emit('actionCsPADGeom')
             self.Pos = self.pos()
         else:
             self.close()
@@ -1264,7 +1300,6 @@ class HitLive(NPGWidget):
 
     def __init__(self, parent, resultReceiver, controlSender):
         super(HitLive, self).__init__(name=self.name)
-        self.mouse = False
         self.resultReceiver = resultReceiver
         self.controlSender = controlSender
         self.ui = LiveHF.Ui_HitFinding()

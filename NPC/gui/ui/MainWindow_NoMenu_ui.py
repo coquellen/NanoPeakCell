@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'MainWindow_NoMenu.ui'
 #
-# Created by: PyQt4 UI code generator 4.12
+# Created by: PyQt4 UI code generator 4.12.1
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -25,7 +25,8 @@ except AttributeError:
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName(_fromUtf8("MainWindow"))
-        MainWindow.resize(1060, 942)
+        MainWindow.resize(860, 720)
+        MainWindow.setSizeIncrement(QtCore.QSize(0, 0))
         self.centralwidget = QtGui.QWidget(MainWindow)
         self.centralwidget.setObjectName(_fromUtf8("centralwidget"))
         self.horizontalLayout_4 = QtGui.QHBoxLayout(self.centralwidget)
@@ -35,7 +36,8 @@ class Ui_MainWindow(object):
         self.verticalLayout_2 = QtGui.QVBoxLayout()
         self.verticalLayout_2.setObjectName(_fromUtf8("verticalLayout_2"))
         self.graphicsView = GraphicsView(self.centralwidget)
-        self.graphicsView.setMinimumSize(QtCore.QSize(800, 800))
+        self.graphicsView.setMinimumSize(QtCore.QSize(500, 500))
+        self.graphicsView.setSizeIncrement(QtCore.QSize(1, 1))
         self.graphicsView.setObjectName(_fromUtf8("graphicsView"))
         self.verticalLayout_2.addWidget(self.graphicsView)
         self.ImageInfo = QtGui.QLabel(self.centralwidget)

@@ -12,7 +12,7 @@ import h5py
 from .Azimuthal_Integrator import AI
 from . import utils
 from multiprocessing import Event
-from mpi.NPC_routines import InitDetector
+from NPC.NPC_routines import InitDetector
 from .ZmqSockets import ZMQPush
 import zmq, json
 
