@@ -13,8 +13,7 @@ from .Azimuthal_Integrator import AI
 from . import utils
 from multiprocessing import Event
 from NPC.NPC_routines import InitDetector
-from .ZmqSockets import ZMQPush
-import zmq, json
+import json
 
 class FileSentinel(multiprocessing.Process):
     def __init__(self, task_queue, total_queue, options):

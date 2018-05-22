@@ -190,8 +190,6 @@ def startMPI(options):
                     Client = getattr(NPC_client, '%s_H5_Client' % options['experiment'])(options)
                 else:
                     Client = getattr(NPC_client, '%sClient' % options['experiment'])(options)
-
-
             Client.run()
         else:
             pass

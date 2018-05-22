@@ -144,10 +144,10 @@ def DoReconstruct(data, geom_params, size):
             xmax = int(round((size / 2) - delta_y))
             ymin = int(round((size / 2) + delta_x))
             ymax = int(round((size / 2) + delta_x + rot.shape[1]))
-
+        #print alpha, xmin, xmax, ymin, ymax
         reconstructed[xmin:xmax, ymin:ymax] = rot
 
-    return reconstructed
+    return reconstructed[:,::-1]
 
 def DoReconstruct_dev(data, geom_params,size):
         reconstructed = np.indices((size,size))
@@ -247,4 +247,3 @@ if __name__ == '__main__':
     reconstructed = reconstruct(dset, geom_params)
     plt.imshow(reconstructed, vmin=0, vmax=300, cmap='spectral')
     plt.show()
-

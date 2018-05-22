@@ -55,7 +55,7 @@ def local_maxima( image, radius, separation, threshold):
 
         maxima = np.vstack(np.where((image == dilation) & (image >= threshold))).T[:,::-1]
         if not np.size(maxima) > 0:
-            warnings.warn("Image contains no local maxima.", UserWarning)
+            #warnings.warn("Image contains no local maxima.", UserWarning)
             return np.empty((0, ndim))
 
         # Flat peaks return multiple nearby maxima. Eliminate duplicates.

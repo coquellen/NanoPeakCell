@@ -1,13 +1,15 @@
 import zmq
 import datetime
 from PyQt4.QtCore import QTimer
-import bitshuffle, lz4
+import lz4
+import bitshuffle
 import numpy as np
 import json
 import struct
 import os
-import time
-
+from multiprocessing import Process
+# id30a3 encoding is bs16-lz4<
+# WHY ?
 
 class ZMQPush(object):
     def __init__(self, host, port, opts=[], flags=0, meth = 'tcp', verbose=False):
@@ -173,6 +175,9 @@ class ZMQPushMulti(ZMQPush):
         return
 
 
+
+
+
 class EigerZMQStream(ZMQPull):
 
     def __init__(self, host, port=9999, verbose=False):
@@ -228,28 +233,25 @@ class NPGPull(ZMQPull):
             return
 
 
-
-
-
 class EigerStreamDecoder():
     """
-    Class to decode zmq frames from EIGER ZMQ stream
+    dummy class to decode zmq frames from EIGER ZMQ stream
     """
-    def __init__(self, verbose=False, roi=False):
+    def __init__(self, basename="eigerStream", path=".", ftype="", verbose=False, roi=False):
 
-        #self.basename = basename
-        #self.ftype = ftype
-        #self.path = path
+        self.basename = basename
+        self.ftype = ftype
+        self.path = path
 
-        #if not os.path.isdir(self.path):
-        #    raise IOError("[ERR] path %s does not exist" %self.path)
+        if not os.path.isdir(self.path):
+            raise IOError("[ERR] path %s does not exist" %self.path)
 
         #if roi: self.roi = ROI(*roi,verbose=verbose)
         #else: self.roi = ROI(verbose=verbose)
 
         self._verbose = verbose
-        #if self._verbose:
-        #    print "[OK] initialized %s FileWriter" %self.ftype
+        if self._verbose:
+            print("[OK] initialized %s FileWriter" %self.ftype)
 
     def decodeFrames(self, frames):
         """
@@ -258,78 +260,75 @@ class EigerStreamDecoder():
         try:
             header = json.loads(frames[0].bytes)
         except Exception as e:
-            print e
-            return False
+            print(e)
         if header["htype"].startswith("dheader-"):
-            return self.__decodeHeader__(frames)
+            data = self.__decodeHeader__(frames)
         elif header["htype"].startswith("dimage-"):
-            return self.__decodeImage__(frames)
+            data = self.__decodeImage__(frames)
         elif header["htype"].startswith("dseries_end"):
-            return self.__decodeEndOfSeries__(frames)
+            data = self.__decodeEndOfSeries__(frames)
         else:
-            print "[ERR] not an EIGER ZMQ message"
-            return 0, -3, False
-
+            print("[ERR] not an EIGER ZMQ message")
+            return False
+        return data
 
     def __decodeImage__(self, frames):
         """
         decode ZMQ image frames
         """
         if self._verbose:
-            print "[*] decode image"
+            print("[*] decode image")
 
         header = json.loads(frames[0].bytes) # header dict
         frameID = header["frame"]
         seriesID = header["series"]
-
         info = json.loads(frames[1].bytes) # info dict
 
         if info["encoding"] == "lz4<": # TODO: soft code flag
             data = self.readLZ4(frames[2], info["shape"], info["type"])
+
         elif "bs" in info["encoding"]:
-            print info["encoding"]
             data = self.readBSLZ4(frames[2], info["shape"], info["type"])
+
         else:
             raise IOError("[ERR] encoding %s is not implemented" %info["encoding"])
 
         return seriesID, frameID, data
 
     def __decodeEndOfSeries__(self, frames):
-        if self._verbose:
-            print "[OK] received end of series ", json.loads(frames[0].bytes)
-
-        return 0, -2, "End of series"
+        header = json.loads(frames[0].bytes)
+        return header["series"], -2, "End of series"
 
     def __decodeHeader__(self, frames):
         """
         decode and process ZMQ header frames
         """
         if self._verbose:
-            print "[*] decode header"
+            print("[*] decode header")
         header = json.loads(frames[0].bytes)
+        seriesID = header["series"]
         if header["header_detail"]:
             if self._verbose:
-                print header
+                print(header)
         if header["header_detail"] is not "none":
             if self._verbose:
-                print "detector config"
+                print("detector config")
                 for key, value in json.loads(frames[1].bytes).iteritems():
-                    print key, value
-        if header["header_detail"] == "all":
-            if json.loads(frames[2].bytes)["htype"].startswith("dflatfield"):
-                if self._verbose:
-                    print "writing flatfield"
-            if json.loads(frames[4].bytes)["htype"].startswith("dpixelmask"):
-                if self._verbose:
-                    print "writing pixel mask"
-            if json.loads(frames[6].bytes)["htype"].startswith("dcountrate"):
-                if self._verbose:
-                    print "writing LUT"
-        if len(frames) == 9:
-            if self._verbose:
-                print "[*] appendix: ", json.loads(frames[8].bytes)
-
-        return 0, -1, "Header"
+                    print(key, value)
+        #if header["header_detail"] == "all":
+        #    if json.loads(frames[2].bytes)["htype"].startswith("dflatfield"):
+        #        if self._verbose:
+        #            print "writing flatfield"
+        #    if json.loads(frames[4].bytes)["htype"].startswith("dpixelmask"):
+        #        if self._verbose:
+        #            print "writing pixel mask"
+        #    if json.loads(frames[6].bytes)["htype"].startswith("dcountrate"):
+        #        if self._verbose:
+        #            print("writing LUT")
+        #if len(frames) == 9:
+        #    if self._verbose:
+        #        print("[*] appendix: ", json.loads(frames[8].bytes))
+        return seriesID , -1, "Header"
 
     def readBSLZ4(self, frame, shape, dtype):
         """
@@ -346,7 +345,7 @@ class EigerStreamDecoder():
         blocksize = np.ndarray(shape=(), dtype=">u4", buffer=data[8:12])/dtype.itemsize
         imgData = bitshuffle.decompress_lz4(blob, shape[::-1], dtype, blocksize)
         if self._verbose:
-            print "[OK] unpacked {0} bytes of bs-lz4 data".format(len(imgData))
+            print("[OK] unpacked {0} bytes of bs-lz4 data".format(len(imgData)))
         return imgData
 
     def readLZ4(self, frame, shape, dtype):
@@ -358,88 +357,8 @@ class EigerStreamDecoder():
         """
         dtype = np.dtype(dtype)
         dataSize = dtype.itemsize*shape[0]*shape[1] # bytes * image size
-
         imgData = lz4.loads(struct.pack('<I', dataSize) + frame.bytes)
         if self._verbose:
-            print "[OK] unpacked {0} bytes of lz4 data".format(len(imgData))
+            print("[OK] unpacked {0} bytes of lz4 data".format(len(imgData)))
 
         return np.reshape(np.fromstring(imgData, dtype=dtype), shape[::-1])
-
-
-
-
-
-
-#from multiprocessing import Process
-
-# class NPGLiveStream(Process):
-#
-#     def __init__(self, Eigerhost, host, HFParams, rank, size, shape, debug):
-#         super(NPGLiveStream, self).__init__()
-#         self.host = host
-#         self.debug = debug
-#         self.HFParams = HFParams
-#         self.threshold = HFParams.threshold
-#         self.npixels = HFParams.npixels
-#         self.x1, self.y1, self.x2, self.y2 = HFParams.roi
-#         self.mask = HFParams.mask
-#         self.rank = rank
-#         self.size = size
-#         self.data = np.zeros((5, shape[0], shape[1]))
-#         self.maxproj = 0
-#
-#         self.NProcessed = 0
-#         self.Nhits = 0
-#
-#         self.eigerStream = EigerZMQStream(Eigerhost)
-#         self.streamDecoder = FileWriter()
-#         #self.statsSender = ZMQPushMulti(host=self.host, port=5556)
-#         context = zmq.Context()
-#         # recieve work
-#         #consumer_receiver = context.socket(zmq.PULL)
-#         #consumer_receiver.connect("tcp://127.0.0.1:5557")
-#         # send work
-#         self.socket = context.socket(zmq.REQ)
-#         self.socket.connect("tcp://127.0.0.1:5558")
-#
-#     def run(self):
-#         import h5py
-#         i = 0
-#         h5 = h5py.File('/Users/coquelleni/PycharmProjects/NanoPeakCell_0.3.2/NPC_DATA/tcache_2_358_data_000020.h5','r')
-#         while True:
-#             if not self.debug:
-#                 frames = self.eigerStream.receive()
-#                 if frames:
-#                     data = self.streamDecoder.decodeFrames(frames)
-#                     if hasattr(data, 'shape'):
-#                         self.process(data)
-#             else:
-#                 data = h5['/entry/data/data/'][i%100,::]
-#                 self.process(data)
-#                 i += 1
-#
-#
-#                     #self.sender.send(msg)
-#
-#     def process(self, data):
-#         #data = data[self.y1:self.y2, self.x1:self.x2]
-#         #data *= self.mask.astype(data.dtype)
-#         #self.maxproj = np.amax(self.data,axis=0)
-#         self.NProcessed += 1
-#         if data[data > self.threshold].size > self.npixels:
-#             self.Nhits += 1
-#             #self.req.send(data)
-#
-#         if self.NProcessed % 10 == 0:
-#             d = {}
-#             d["processed"] = self.NProcessed
-#             d["hits"] = self.Nhits
-#             print("Sending")
-#             self.socket.send_json(d)
-#             reply = self.socket.recv()
-#             #print 'client: ack'
-#             self.NProcessed = 0
-#             self.Nhits = 0
-#
-#
-#

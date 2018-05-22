@@ -38,6 +38,7 @@ class TreeFactory(object):
     def run_hits(self, hits, clear=True):
         if clear:self.tree.clear()
         for f in hits.keys():
+
             self.addItem(f,self.tree)
 
     def run(self, path):
