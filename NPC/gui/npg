@@ -218,11 +218,11 @@ class NPGController(object):
                           '&Display Images': 'OffImage',
                           '&Listen a port': 'OnPort'}
 
-        self.XPView.raiseAll.connect(self.raiseAll)
-        self.ImageView.raiseAll.connect(self.raiseAll)
-        self.TreeFileView.raiseAll.connect(self.raiseAll)
-        self.Table.raiseAll.connect(self.raiseAll)
-        self.HitFindingView.raiseAll.connect(self.raiseAll)
+        #self.XPView.raiseAll.connect(self.raiseAll)
+        #self.ImageView.raiseAll.connect(self.raiseAll)
+        #self.TreeFileView.raiseAll.connect(self.raiseAll)
+        #self.Table.raiseAll.connect(self.raiseAll)
+        #self.HitFindingView.raiseAll.connect(self.raiseAll)
         self.views = [self.ImageView, self.XPView, self.Table, self.HitFindingView, self.TreeFileView]
 
         for cnt, item in enumerate(QActionModes):
