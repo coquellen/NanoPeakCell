@@ -558,7 +558,7 @@ class NPGController(object):
                     value = obj.isChecked()  # get stored value from registry
                     d[str(name)] = value
 
-            settings[view.name] = d
+            settings[str(view.name)] = d
 
         try:
             settings['maskFN'] = self.maskFile
@@ -571,7 +571,6 @@ class NPGController(object):
             settings['geom'] = self.geomFile
         except:
             settings['geom'] = ""
-
         with open(os.path.expanduser('~/.NPGrc.json'), 'w') as outfile:
             json.dump(settings, outfile)
 
