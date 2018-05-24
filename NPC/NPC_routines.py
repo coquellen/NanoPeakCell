@@ -184,7 +184,12 @@ class AI(object):
         print("Pixel Size  X (m): %s" % str(self.psx))
         print("Pixel Size  Y (m): %s" % str(self.psy))
 
-from scitbx.array_family import flex
+try:
+    from scitbx.array_family import flex
+    CCTBX = True
+except ImportError:
+    CCTBX = False
+
 
 def dpack(active_areas=None,
               address=None,
