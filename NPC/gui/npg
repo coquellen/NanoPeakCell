@@ -78,7 +78,8 @@ class NPGMenuBar(QtGui.QMenuBar):
         self.actionExperimental_Settings.setCheckable(True)
         self.actionExperimental_Settings.setChecked(True)
         self.actionHit_Finding = QtGui.QAction("&Hit Finding", self)
-        self.actionHit_Finding.setCheckable(True)
+        self.actionHit_Finding.setCheckable(False)
+        self.actionHit_Finding.setDisabled(True)
         self.actionRuns = QtGui.QAction("&NPC Runs", self)
         self.actionRuns.setCheckable(True)
 
@@ -127,6 +128,7 @@ class NPGController(object):
         self.ImageView = ImageView(self.XPView, binning= self.binning, name=ImageView)
         self.TreeFileView = TreeFileView()
         self.HitFindingView = HitFindingView(self)
+        self.HitFindingView.hide()
         self.Table = TableWidget()
         self.ImgModel = NPGData()
         self.menuBar = NPGMenuBar()
@@ -216,7 +218,6 @@ class NPGController(object):
                           '&Display Images': 'OffImage',
                           '&Listen a port': 'OnPort'}
 
-        #self.HitLiveView.raiseAll.connect(self.raiseAll)
         self.XPView.raiseAll.connect(self.raiseAll)
         self.ImageView.raiseAll.connect(self.raiseAll)
         self.TreeFileView.raiseAll.connect(self.raiseAll)
