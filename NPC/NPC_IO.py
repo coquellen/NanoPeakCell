@@ -1,7 +1,12 @@
 import h5py
 import numpy as np
 from libtbx import easy_pickle
-from scitbx.array_family import flex
+try:
+    from scitbx.array_family import flex
+    CCTBX=True
+except:
+    CCTBX=False
+
 from NPC.NPC_CBF import write
 import os
 from NPC.NPC_routines import dpack
@@ -117,15 +122,16 @@ class PICKLES(object):
         self.args.overload=65535
 
     def SaveHit(self,img, fn):
-        pixels = flex.int(img.astype(np.int32))
-        data = dpack(data=pixels,
-                     distance=self.args.distance,
-                     pixel_size=self.args.detector.pixel1,
-                     wavelength=self.args.wl,
-                     beam_center_x=self.args.beamy * self.args.detector.pixel1,
-                     beam_center_y=self.args.beamx * self.args.detector.pixel1,
-                     ccd_image_saturation=self.args.overload,
-                     saturated_value=self.args.detector.overload)
-        OutputFileName = os.path.join(self.args.procdir, "PICKLES","%s.pickles"%fn)
-        easy_pickle.dump(OutputFileName, data)
+        if CCTBX:
+            pixels = flex.int(img.astype(np.int32))
+            data = dpack(data=pixels,
+                         distance=self.args.distance,
+                         pixel_size=self.args.detector.pixel1,
+                         wavelength=self.args.wl,
+                         beam_center_x=self.args.beamy * self.args.detector.pixel1,
+                         beam_center_y=self.args.beamx * self.args.detector.pixel1,
+                         ccd_image_saturation=self.args.overload,
+                         saturated_value=self.args.detector.overload)
+            OutputFileName = os.path.join(self.args.procdir, "PICKLES","%s.pickles"%fn)
+            easy_pickle.dump(OutputFileName, data)
 
