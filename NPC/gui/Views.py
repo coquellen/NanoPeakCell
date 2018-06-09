@@ -1140,6 +1140,7 @@ class HitFindingView(NPGWidget):
                     'dark': self.getDarkFile,
                     'background_subtraction': self.getBKG,
                     'bragg_search': self.getBraggSearch,
+                    'bragg_threshold': self.getBraggThreshold,
                     'roi': self.getROI}
 
         icon = QIcon(pkg.resource_filename('NPC','gui/icons/folder.svg'))
