@@ -9,9 +9,10 @@ def retrieve_geom_params(lines, tile):
     results = []
     all = grep(lines, tile)
     for param in ['min_fs', 'max_fs', 'min_ss', 'max_ss', '/fs =', '/ss =', 'corner_x', 'corner_y']:
-        l = grep(all,param)[0]
 
-        results.append(l.split('=')[1].strip())
+        l = grep(all,param)
+        print param, l
+        results.append(l[0].split('=')[1].strip())
     return results
 
 def parse_geom_file(filename, openfn=True):
@@ -22,7 +23,7 @@ def parse_geom_file(filename, openfn=True):
       lines = open(filename).readlines()
     else:
       lines = filename.split('\n')
-    tiles = [ line.split('/')[0] for line in lines if 'max_fs' in line ]
+    tiles = [ line.split('/')[0] for line in lines if 'max_fs' in line and 'bad_' not in line]
     for tile in tiles:
         params = retrieve_geom_params(lines, tile)
         max_fs = max(max_fs, int(params[1])+1)
@@ -229,6 +230,7 @@ def reconstruct(data,geom):
 
         if len(geom_params) == 64: return DoReconstruct(data,geom_params,size=1800)
         if len(geom_params) == 8: return DoReconstruct(data, geom_params, size=1600)
+        if len(geom_params) == 128: return DoReconstruct(data, geom_params, size=2000)
 
     else:
         err = 1
@@ -240,9 +242,12 @@ def reconstruct(data,geom):
 
 if __name__ == '__main__':
     from matplotlib import pyplot as plt
-    geom_params  = parse_geom_file('refined.geom')
-    h5 = h5py.File('cxii5615_295_1430751313_868564698_laser_off.h5')
-    dset = h5['data'][:]
+    geom_params  = parse_geom_file('/Users/coquelleni/EuXFEL/current.geom')
+    import h5py
+    h5 = h5py.File('/Users/coquelleni/EuXFEL/powder.h5')
+
+    dset = h5['data/data'][:]
+    #print dset.keys()
     h5.close()
     reconstructed = reconstruct(dset, geom_params)
     plt.imshow(reconstructed, vmin=0, vmax=300, cmap='spectral')
