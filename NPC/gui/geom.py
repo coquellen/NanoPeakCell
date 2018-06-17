@@ -9,9 +9,7 @@ def retrieve_geom_params(lines, tile):
     results = []
     all = grep(lines, tile)
     for param in ['min_fs', 'max_fs', 'min_ss', 'max_ss', '/fs =', '/ss =', 'corner_x', 'corner_y']:
-
         l = grep(all,param)
-        print param, l
         results.append(l[0].split('=')[1].strip())
     return results
 
@@ -31,8 +29,22 @@ def parse_geom_file(filename, openfn=True):
         geom_params[tile]= params
 
 
-
     return geom_params, (max_ss,max_fs)
+
+def parse_geom_file_quadrants(filename, openfn=True):
+    geom_params, (max_ss, max_fs) = parse_geom_file(filename, openfn=True)
+
+    lines = open(filename).readlines()
+    quadrants = grep(lines, 'rigid_group_collection_quadrants =')[0].split('=')[1].strip().split(',')
+
+    QUAD = {}
+    for quad in quadrants:
+        QUAD[quad] = grep(lines,'rigid_group_'+quad)[0].split('=')[1].strip().split(',')
+
+
+        #print quad, QUAD[quad], grep(QUAD[quad],'min_ss')
+
+    return geom_params, (max_ss, max_fs), QUAD
 
 def getGeomTransformations(geom_params):
     #reconstructed = np.zeros((size, size))
@@ -223,7 +235,6 @@ def DoReconstruct_dev(data, geom_params,size):
         #return reconstructed
 
 
-
 def reconstruct(data,geom):
     geom_params , shape = geom
     if data.shape == shape:
@@ -242,13 +253,14 @@ def reconstruct(data,geom):
 
 if __name__ == '__main__':
     from matplotlib import pyplot as plt
-    geom_params  = parse_geom_file('/Users/coquelleni/EuXFEL/current.geom')
-    import h5py
-    h5 = h5py.File('/Users/coquelleni/EuXFEL/powder.h5')
+    geom_params  = parse_geom_file_quadrants('/Users/coquelleni/EuXFEL/current.geom')
 
-    dset = h5['data/data'][:]
+    #import h5py
+    #h5 = h5py.File('/Users/coquelleni/EuXFEL/powder.h5')
+
+    #dset = h5['data/data'][:]
     #print dset.keys()
-    h5.close()
-    reconstructed = reconstruct(dset, geom_params)
-    plt.imshow(reconstructed, vmin=0, vmax=300, cmap='spectral')
-    plt.show()
+    #h5.close()
+    #reconstructed = reconstruct(dset, geom_params)
+    #plt.imshow(reconstructed, vmin=0, vmax=300, cmap='spectral')
+    #plt.show()

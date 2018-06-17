@@ -11,7 +11,7 @@ setup(
 	author_email  =   "coquelleni@ill.fr",
 	packages      =   find_packages(),
     package_data={'NPC': ['bitmaps/*','gui/cmaps/*','gui/icons/*', 'mpi/*']},
-	scripts = ['NPC/npc','NPC/gui/npg'],
+	scripts = ['NPC/npc','NPC/gui/npg','NPC/gui/npgeom'],
 
     ext_modules=[
         Extension('cbf_c', [
