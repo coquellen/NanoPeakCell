@@ -1,0 +1,215 @@
+#!/usr/bin/env python
+import numpy as np
+from NPC.gui.Views import ImageView, XPView, CsPADGeom, ResolutionRing
+import pyqtgraph as pg
+from PyQt4 import  QtGui, QtCore
+from NPC.gui.Models import NPGData
+
+
+
+app = QtGui.QApplication([])
+import inspect, time, json , os
+import argparse
+
+pg.setConfigOptions(imageAxisOrder='row-major')
+
+class CsPADGeomController(object):
+
+    bc = 1000
+    radii = [50,100,150,200,300,400]
+    #QuadPixels = [[0, 860, 0, 942],
+    #              [0, 940, 942, 1750],
+    #              [861, 1750, 0, 858],
+    #              [941, 1750, 858, 1750]]
+
+
+    #AgipD V0
+    QuadPixels = [[0, 999, 0, 999],
+                  [1000, 1999 , 0, 999],
+                  [0,1010,1000,1999],
+                  [1011,1999,1000,1999]]
+
+
+    #AgipD V1
+    #QuadPixels = [[1000, 1999 , 0, 999],
+    #              [1011,1999,1000,1999],
+    #              [0, 1010, 1000, 1999],
+    #              [0, 999, 0, 999]] #Q4 UL]
+
+    IDX_match = [1,3,2,0]
+
+    def __init__(self, app):
+        self.app = app
+        self.binning = 1
+
+        self.moves = [[0,0], [0,0], [0,0], [0,0]]
+
+        self.XPView = XPView(Live=False)
+        self.CsPADGeom = CsPADGeom()
+        self.CsPADGeom.setWindowTitle("Quad Movement")
+
+
+        self.ImageView = ImageView(self.XPView, binning=1, name='ImageView',nRings=10)
+        self.ImageView.view.roi.hide()
+        self.ImageView.setWindowTitle("NPC")
+        self.ImageView.ui.layoutWidget.setGeometry(QtCore.QRect(10, 30, 209, 211))
+        self.ImageView.ui.groupBox.setMinimumSize(QtCore.QSize(220, 260))
+        self.ImageView.ui.groupBox.setMaximumSize(QtCore.QSize(220, 260))
+        self.ImageView.ui.SaveGeom = QtGui.QPushButton(self.ImageView.ui.layoutWidget)
+        self.ImageView.ui.SaveGeom.setObjectName("SaveGeom")
+        self.ImageView.ui.SaveGeom.setText("Save Geometry")
+        self.ImageView.ui.SaveGeom.clicked.connect(self.saveGeom)
+        self.ImageView.ui.verticalLayout.addWidget(self.ImageView.ui.SaveGeom)
+
+
+        self.ImgModel = NPGData()#XPView, binning, name, imgSocket, req, timeout
+        self.ImgModel.updateImageView.connect(self.ImageView.setImg)
+        #self.geomFN="/Users/coquelleni/EuXFEL/cleanmax.geom"
+        self.geomFN=sys.argv[2]
+
+        self.ImgModel.updateGeomQuad(self.geomFN)
+        self.quad = self.ImgModel.quad
+        self.ImageView.view.beam.show()
+        self.XPView.ui.beamX.setText(str(self.bc))
+        self.XPView.ui.beamY.setText(str(self.bc))
+        self.ImageView.setBeam()
+        self.XPView.ui.beamX.setDisabled(True)
+        self.XPView.ui.beamY.setDisabled(True)
+
+
+        self.ImgModel.updateData(sys.argv[1],'/data', None)
+        self.data = self.ImgModel.data
+
+        self.ROIS = [pg.CircleROI((self.bc-r/2.,self.bc-r/2.),size=(r,r), pen=self.ImageView.view.pen, movable=False,) for r in self.radii]
+        for roi in self.ROIS:
+            self.ImageView.view.addItem(roi)
+            roi.show()
+        #for ring in self.ImageView.view.rings: ring.show()
+
+        self.CsPADGeom.ui.Up.clicked.connect(self.MoveQuad)
+        self.CsPADGeom.ui.Down.clicked.connect(self.MoveQuad)
+        self.CsPADGeom.ui.Left.clicked.connect(self.MoveQuad)
+        self.CsPADGeom.ui.Right.clicked.connect(self.MoveQuad)
+        self.ImageView.ui.ColorMap.currentIndexChanged.connect(self.updateRingsPen)
+
+    def saveGeom(self):
+        #print self.quad
+        lines = open(self.geomFN).readlines()
+        out=open('tmp.geom','w')
+        panels = {}
+        print self.quad
+
+        for quad in self.quad.keys():
+            for panel in self.quad[quad]:
+                panels[panel] = quad
+
+        for line in lines:
+                write = True
+                for panel in panels.keys():
+                    if line.startswith(panel) and 'corner' in line:
+                        p, c = line.split('=')
+                        idx = int(panels[panel][1]) #+
+                        if 'corner_x' in p:
+                            print self.IDX_match[idx]
+                            inc = self.moves[self.IDX_match[idx]][0]
+                        if 'corner_y' in p:
+                            inc = self.moves[self.IDX_match[idx]][1]
+                        out.write('%s = %4.4f\n' %(p,float(c.strip())+inc))
+                        print('%s = %4.4f\n' %(p,float(c.strip())+inc))
+                        write = False
+                if write:
+                    out.write(line)
+
+
+    def MoveQuad(self):
+        sending_button = self.CsPADGeom.sender()
+        movement = str(sending_button.objectName())
+        QuadStatus =  self.CsPADGeom.getQuadrantStatus()
+        increment = self.CsPADGeom.getIncrement()
+        self.copy = np.zeros(self.data.shape)
+
+        for i, quad in enumerate(QuadStatus):
+            if quad:
+                self.Translate_quads(i, increment, movement)
+            else:
+                self.Translate_quads(i, 0, movement)
+
+        self.ImgModel.data = self.copy
+        self.ImgModel.updateImageView.emit(self.ImgModel.data)
+        #print self.moves
+
+        self.CsPADGeom.ui.Q0X.setText(str(self.moves[0][1]))
+        self.CsPADGeom.ui.Q0Y.setText(str(self.moves[0][0]))
+        self.CsPADGeom.ui.Q1X.setText(str(self.moves[1][1]))
+        self.CsPADGeom.ui.Q1Y.setText(str(self.moves[1][0]))
+
+        self.CsPADGeom.ui.Q2X.setText(str(self.moves[2][1]))
+        self.CsPADGeom.ui.Q2Y.setText(str(self.moves[2][0]))
+        self.CsPADGeom.ui.Q3X.setText(str(self.moves[3][1]))
+        self.CsPADGeom.ui.Q3Y.setText(str(self.moves[3][0]))
+
+    def Translate_quads(self, Quad, increment,movement):
+        PixelsBoundaries = self.QuadPixels[Quad]
+
+        y0, y1, x0, x1 = PixelsBoundaries
+        if movement == 'Up':
+            self.moves[Quad][1] += increment
+        elif movement == 'Down':
+            self.moves[Quad][1] -= increment
+        elif movement == 'Left':
+            self.moves[Quad][0] +=  increment
+        elif movement == 'Right':
+            self.moves[Quad][0] -= increment
+
+        move_y = self.moves[Quad][1]
+        move_x = self.moves[Quad][0]
+
+        X0 = max(0, x0 - move_y)
+        Y0 = max(0, y0 - move_x)
+
+        X1 = min(1750, x1 - move_y)
+        Y1 = min(1750, y1 - move_x)
+
+
+        if move_x == 0 and move_y == 0:
+            self.copy[x0:x1, y0:y1] = self.data[x0:x1,y0:y1]
+        elif move_x <= 0 and move_y <=0:
+            self.copy[X0:X1, Y0:Y1] = self.data[x0:x0 + (X1 - X0), y0:y0 + (Y1 - Y0)]
+        elif move_x >= 0 and move_y <=0:
+            if y0 == 0:
+                self.copy[X0:X1, Y0:Y1] = self.data[x0:x0 + (X1 - X0), y0 + move_x:y1]
+            else:self.copy[X0:X1, Y0:Y1] = self.data[x0:x0 + (X1 - X0), y0:y0 + (Y1 - Y0)]
+
+        elif move_x <= 0 and move_y >= 0:
+            if x0 == 0:
+                self.copy[X0:X1, Y0:Y1] = self.data[x0+move_y:x1, y0:y0 + (Y1 - Y0)]
+            else:
+                self.copy[X0:X1, Y0:Y1] = self.data[x0:x0 + (X1 - X0), y0:y0 + (Y1 - Y0)]
+        elif move_x >= 0 and move_y >=0:
+            if x0 == 0 and y0== 0:
+                self.copy[X0:X1, Y0:Y1] = self.data[x0 + move_y:x1, y0 +move_x:y1]
+            elif y0 == 0:
+                self.copy[X0:X1, Y0:Y1] = self.data[x0:x0 + (X1 - X0), y0 + move_x:y1]
+            elif x0 == 0:
+                self.copy[X0:X1, Y0:Y1] = self.data[x0 + move_y:x1, y0:y0 + (Y1 - Y0)]
+            else:
+                self.copy[X0:X1, Y0:Y1] = self.data[x0:x0 + (X1 - X0), y0:y0 + (Y1 - Y0)]
+
+    def updateRingsPen(self):
+        for roi in self.ROIS:
+            roi.setPen(self.ImageView.view.pen)
+
+import sys
+
+if __name__ == '__main__':
+
+    #parser = ArgumentParser()
+    #if parser._check_input():
+
+        #img=sys.argv()
+        #geom=
+        # Process(target=ventilator, args=()).start()
+        myapp = CsPADGeomController(app)
+        sys.exit(app.exec_())
+    #else:
+    #    parser.print_usage()

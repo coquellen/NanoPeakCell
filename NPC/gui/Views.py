@@ -1347,9 +1347,9 @@ class HitLive(NPGWidget):
         self.ui.ROIX2.editingFinished.connect(self.getROI)
         self.ui.ROIY1.editingFinished.connect(self.getROI)
         self.ui.ROIY2.editingFinished.connect(self.getROI)
-        self.ui.FastScan.toggled.connect(self.OnFastScanToggled)
-        self.ui.ShootNTrap.toggled.connect(self.OnShootNTrapToggled)
-        self.ui.NShots.editingFinished.connect(self.setNShots)
+        #self.ui.FastScan.toggled.connect(self.OnFastScanToggled)
+        #self.ui.ShootNTrap.toggled.connect(self.OnShootNTrapToggled)
+        #self.ui.NShots.editingFinished.connect(self.setNShots)
 
         self.zmqTimer.start(250)
         self.plotTimer.start(1000)

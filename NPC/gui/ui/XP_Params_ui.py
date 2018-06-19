@@ -113,6 +113,7 @@ class Ui_Form(object):
             self.Detector.addItem(_fromUtf8(""))
             self.Detector.addItem(_fromUtf8(""))
             self.Detector.addItem(_fromUtf8(""))
+            self.Detector.addItem(_fromUtf8(""))
             self.Detector.setItemText(0, _translate("Form", "Pilatus1M", None))
             self.Detector.setItemText(1, _translate("Form", "Pilatus2M", None))
             self.Detector.setItemText(2, _translate("Form", "Pilatus6M", None))
@@ -121,7 +122,8 @@ class Ui_Form(object):
             self.Detector.setItemText(5, _translate("Form", "Eiger16M", None))
             self.Detector.setItemText(6, _translate("Form", "MPCCD", None))
             self.Detector.setItemText(7, _translate("Form", "CSPAD", None))
-            self.Detector.setItemText(8, _translate("Form", "RayonixMx225hs", None))
+            self.Detector.setItemText(8, _translate("Form", "AgipD", None))
+            self.Detector.setItemText(9, _translate("Form", "RayonixMx225hs", None))
         else:
             self.Detector.addItem(_fromUtf8(""))
             self.Detector.addItem(_fromUtf8(""))

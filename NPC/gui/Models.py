@@ -8,7 +8,7 @@ import os
 from PyQt4.QtCore import  pyqtSignal, QObject
 
 import numpy as np
-from NPC.gui.geom import reconstruct, parse_geom_file, getGeomTransformations
+from NPC.gui.geom import reconstruct, parse_geom_file_quadrants, parse_geom_file, getGeomTransformations
 import NPC.gui.peakfind as pf
 
 
@@ -160,6 +160,16 @@ class NPGData(QObject):
         if self.data is not None:
             self.applyCorrection()
             self.updateImageView.emit(self.data)
+
+    def updateGeomQuad(self, fn, openfn=True):
+        geom, shape, self.quad = parse_geom_file_quadrants(fn, openfn=openfn)
+        self.geom = geom, shape
+        self.loadedGeom = True
+        if self.data is not None:
+            self.applyCorrection()
+            self.updateImageView.emit(self.data)
+
+
 
     def applyCorrection(self):
         if self.loadedMask:

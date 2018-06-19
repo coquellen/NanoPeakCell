@@ -9,9 +9,8 @@ def retrieve_geom_params(lines, tile):
     results = []
     all = grep(lines, tile)
     for param in ['min_fs', 'max_fs', 'min_ss', 'max_ss', '/fs =', '/ss =', 'corner_x', 'corner_y']:
-        l = grep(all,param)[0]
-
-        results.append(l.split('=')[1].strip())
+        l = grep(all,param)
+        results.append(l[0].split('=')[1].strip())
     return results
 
 def parse_geom_file(filename, openfn=True):
@@ -22,7 +21,7 @@ def parse_geom_file(filename, openfn=True):
       lines = open(filename).readlines()
     else:
       lines = filename.split('\n')
-    tiles = [ line.split('/')[0] for line in lines if 'max_fs' in line ]
+    tiles = [ line.split('/')[0] for line in lines if 'max_fs' in line and 'bad_' not in line]
     for tile in tiles:
         params = retrieve_geom_params(lines, tile)
         max_fs = max(max_fs, int(params[1])+1)
@@ -30,8 +29,22 @@ def parse_geom_file(filename, openfn=True):
         geom_params[tile]= params
 
 
-
     return geom_params, (max_ss,max_fs)
+
+def parse_geom_file_quadrants(filename, openfn=True):
+    geom_params, (max_ss, max_fs) = parse_geom_file(filename, openfn=True)
+
+    lines = open(filename).readlines()
+    quadrants = grep(lines, 'rigid_group_collection_quadrants =')[0].split('=')[1].strip().split(',')
+
+    QUAD = {}
+    for quad in quadrants:
+        QUAD[quad] = grep(lines,'rigid_group_'+quad)[0].split('=')[1].strip().split(',')
+
+
+        #print quad, QUAD[quad], grep(QUAD[quad],'min_ss')
+
+    return geom_params, (max_ss, max_fs), QUAD
 
 def getGeomTransformations(geom_params):
     #reconstructed = np.zeros((size, size))
@@ -222,13 +235,13 @@ def DoReconstruct_dev(data, geom_params,size):
         #return reconstructed
 
 
-
 def reconstruct(data,geom):
     geom_params , shape = geom
     if data.shape == shape:
 
         if len(geom_params) == 64: return DoReconstruct(data,geom_params,size=1800)
         if len(geom_params) == 8: return DoReconstruct(data, geom_params, size=1600)
+        if len(geom_params) == 128: return DoReconstruct(data, geom_params, size=2000)
 
     else:
         err = 1
@@ -240,10 +253,14 @@ def reconstruct(data,geom):
 
 if __name__ == '__main__':
     from matplotlib import pyplot as plt
-    geom_params  = parse_geom_file('refined.geom')
-    h5 = h5py.File('cxii5615_295_1430751313_868564698_laser_off.h5')
-    dset = h5['data'][:]
-    h5.close()
-    reconstructed = reconstruct(dset, geom_params)
-    plt.imshow(reconstructed, vmin=0, vmax=300, cmap='spectral')
-    plt.show()
+    geom_params  = parse_geom_file_quadrants('/Users/coquelleni/EuXFEL/current.geom')
+
+    #import h5py
+    #h5 = h5py.File('/Users/coquelleni/EuXFEL/powder.h5')
+
+    #dset = h5['data/data'][:]
+    #print dset.keys()
+    #h5.close()
+    #reconstructed = reconstruct(dset, geom_params)
+    #plt.imshow(reconstructed, vmin=0, vmax=300, cmap='spectral')
+    #plt.show()
