@@ -78,8 +78,8 @@ class NPGMenuBar(QtGui.QMenuBar):
         self.actionExperimental_Settings.setCheckable(True)
         self.actionExperimental_Settings.setChecked(True)
         self.actionHit_Finding = QtGui.QAction("&Hit Finding", self)
-        self.actionHit_Finding.setCheckable(False)
-        self.actionHit_Finding.setDisabled(True)
+        self.actionHit_Finding.setCheckable(True)
+        self.actionHit_Finding.setChecked(True)
         self.actionRuns = QtGui.QAction("&NPC Runs", self)
         self.actionRuns.setCheckable(True)
 

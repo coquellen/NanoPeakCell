@@ -435,7 +435,7 @@ class MProcessEiger(MProcess):
                     self.AzimuthalIntegrator.ai.separate(\
                         self.correctData(self.h5[self.group][i,::].astype(np.int32),
                                          self.dark,
-                                         self.options['ROI_tuple']),
+                                         self.roi),
                         npt_rad=1024, npt_azim=512,
                         unit="2th_deg",
                         percentile=50,
@@ -446,7 +446,7 @@ class MProcessEiger(MProcess):
 
                 self.data = self.correctData(self.h5[self.group][i,self.roi.xmin:self.roi.xmax,self.roi.ymin:self.roi.ymax].astype(np.int32),
                                          self.dark,
-                                         self.options['ROI_tuple'])
+                                         self.roi)
             
 
 
