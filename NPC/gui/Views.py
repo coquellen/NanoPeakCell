@@ -575,8 +575,8 @@ class ImageView(QMainWindow):
 
                 if self.cursorx > 0 and self.cursory > 0 and self.cursorx < self.xmax and self.cursory < self.ymax:
                     try:
-                        I = self.data[self.cursorx, self.cursory]
-                        #I = self.data[self.cursory, self.cursorx]
+                        #I = self.data[self.cursorx, self.cursory]
+                        I = self.data[self.cursory, self.cursorx]
                     except:
                        I = 0
                     res = self.getResolution(self.cursorx * self.binning, self.cursory * self.binning)
