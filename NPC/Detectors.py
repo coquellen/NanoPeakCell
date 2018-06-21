@@ -57,7 +57,7 @@ class Frelon(Detector):
 class AgipD(Detector):
     def __init__(self):
         Detector.__init__(self)
-        self.resolution = (1024, 1024)
+        self.resolution = (2000, 2000)
         self.shape = self.resolution
         self.pixel1 = 2.0e-4
         self.pixel2 = 2.0e-4
