@@ -59,7 +59,7 @@ class FileSentinel(multiprocessing.Process):
                 h5 = h5py.File(filename,'r')
                 try:
                     num_frames, res0, res1 = h5[self.h5path].shape
-                    if self.options['shootntrap']:
+                    if self.options.has_key("shootntrap") and self.options['shootntrap']:
                         idx_start = TotalN % self.options['nperposition'] + self.options['nempty']
                         idx = [i for i in range(idx_start,num_frames,self.options['nperposition'])]
                         self.total += len(idx)
