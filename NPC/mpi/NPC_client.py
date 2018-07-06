@@ -22,7 +22,7 @@ class Client(object):
 
     def __init__(self, options):
         self.options = options
-        self.detector = InitDetector(self.options)
+        #self.detector = InitDetector(self.options)
         self.options['shape'] = self.detector.shape
         self.options['rank'] = rank
         self.roi = ROI(self.options, self.detector.shape)
@@ -278,6 +278,8 @@ class SACLAClient(Client):
     def __init__(self, args):
         Client.__init__(self, args)
         self.args = args
+        from NPC.Detectors import MPCCD
+        self.detector = MPCCD()
 
         self.SaveHits = SH(self.args, energy=True)
         #These are the offline SACLA APIS
