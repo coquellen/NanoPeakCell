@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import shutil
-
 try:
     import ConfigParser
 except ImportError:
@@ -42,11 +41,7 @@ IO_SSX = {
     'output_directory': (str, '.'),
     'dark': (str, 'None')}
 
-IO_SFX_SACLA = {'data': (str, None),
-                'runs': (str, None),
-                'calculte_dark': (parseBoolString, False),
-                'dark_run': (int, None),
-                'dark_file': (str, None),
+IO_SFX_SACLA = {'runs': (str, None),
                 'output_directory': (str, None)}
 
 IO_SFX_LCLS = {
@@ -190,6 +185,10 @@ def startMPI(options):
                     Client = getattr(NPC_client, '%s_H5_Client' % options['experiment'])(options)
                 else:
                     Client = getattr(NPC_client, '%sClient' % options['experiment'])(options)
+
+            if options['experiment'] == 'SACLA':
+                Client = getattr(NPC_client, '%sClient' % options['experiment'])(options)
+
             Client.run()
         else:
             pass

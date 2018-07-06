@@ -38,7 +38,7 @@ def runmaster(nClients, args):
                     Nerr   += arrinfo.Nerr
                     txthits, txtnohits = arrinfo.hitsIDX
                     if len(txthits) > 0:
-                        print >> outTxtHit, txthits
+                        outTxtHit.write(txthits)
                     if len(txtnohits) > 0:
                         print >> outTxtRej, txtnohits
                     print("Processed: %5i - Hits %5i - Errors : %i"%(Ntotal, Nhits, Nerr))#md.small.Ntotal, md.small.Nhits, md

@@ -54,7 +54,7 @@ class LCLSClient(Client):
 
         if self.args.SubtractBKG:
             if self.args.CrystFELGeom:
-                from NPC_routines import ApplyCrystFELGeom
+                from NPC.NPC_routines import ApplyCrystFELGeom
                 self.getData = ApplyCrystFELGeom
             else:
                 self.getData = det.image
@@ -79,27 +79,16 @@ class LCLSClient(Client):
                 continue
             # data = self.DataCorrection.DarkCorrection(img2, self.args.roi.tuple)  # data shape 32 * 185 * 388
             # The hit is performed on the corrected image - using the provided mask
-            if IsHit(self.DataCorrection.MaskCorrection(img2, self.args.roi.tuple), self.args.threshold,
-                     self.args.npixels):
-                k = 0
-                for j in xrange(4):
-                  for i in xrange(8):
-                       img[i*185:(i+1)*185,j*388:(j+1)*388]= img2[k,::]
-                       k+=1
+            if IsHit(self.DataCorrection.MaskCorrection(img2, self.args.roi.tuple), self.args['threshold'],
+                     self.args['npixels']):
 
                 self.Nhits += 1
 
-                if self.args.roi_input is not 'none':
-                    # If a ROI was used for hit detection, getting the full-size and correct hit (dark only here)
-                    data = self.DataCorrection.DarkCorrection(img.data, (
-                    0, self.args.detector.shape[0], 0, self.args.detector.shape[1]))
-                #ImgReshape(img, data)
 
-                # MaxProj = np.maximum(MaxProj, data)
                 # TODO: Perform Bragg peak localization
-                id = evt.get(EventId).time()
-                root = '%s_%s_%i_%i'%(args.exp,str(args.run).zfill(3), id[0], id[1])
-                bl_info = evt.get( Bld.BldDataEBeamV7, Source('BldInfo(EBeam)'))
+                #id = evt.get(EventId).time()
+                #root = '%s_%s_%i_%i'%(args.exp,str(args.run).zfill(3), id[0], id[1])
+                #bl_info = evt.get( Bld.BldDataEBeamV7, Source('BldInfo(EBeam)'))
                 energy = bl_info.ebeamPhotonEnergy()
                 #          OutputFile.create_dataset("energy", data=energy)
                 self.SaveHits.saveHit(img, root,energy)
@@ -138,8 +127,8 @@ class LCLSClient(Client):
 class SSXClient(Client):
 
 
-    def __init__(self, args):
-        Client.__init__(self, args)
+    def __init__(self, options):
+        Client.__init__(self, options)
         self.fabio = __import__('fabio')
 
         #This should be an object...
@@ -274,3 +263,92 @@ class SSX_H5_Client(SSXClient):
                     self.nohitsIDX = ""
 
         md.endrun()
+
+class SACLAClient(Client):
+
+    shutter_param = 'xfel_bl_3_shutter_1_open_valid/status'
+    pump_param = ''
+    energy_param = ''
+    detName = ['MPCCD-8-2-001-%i'%i for i in range(1,9)]
+    raw_shape = (8 * 1024 ,512)
+    #rec_shape = (8 * 1024, 512)
+    data = np.zeros(raw_shape,dtype=np.float64)
+    #tiled = np.zeros(raw_shape, dtype=np.float64)
+
+    def __init__(self, args):
+        Client.__init__(self, args)
+        self.args = args
+
+        self.SaveHits = SH(self.args, energy=True)
+        #These are the offline SACLA APIS
+        self.dbpy = __import__('dbpy')
+        self.stpy = __import__('stpy')
+
+        self.bl = self.args['bl']
+        self.run = self.args['run']
+        ## This is SACLA specific and used in a lot of API functions
+        self.taghi =  self.dbpy.read_hightagnumber(self.bl,self.run)
+        self.taglist = self.dbpy.read_taglist_byrun(self.bl, self.run)
+
+        #Getting some useful experimental info
+        self.ShutterStatus = self.getShutterStatus()
+        self.PumpLaserStatus = self.getPumpLaserStatus()
+        self.PhotoEnergy = self.getPhotonEnergy()
+
+        #Dealing with data retrieval  #Not sure about the tuple of run numbers ...
+        self.StorageReaders = [self.stpy.StorageReader(detname,self.bl,(self.run,self.run)) for detname in self.detName]
+        self.StorageBuffers = [self.stpy.StorageBuffer(SR) for SR in self.StorageReaders]
+
+        #self.run()
+
+    def getShutterStatus(self):
+        return self.dbpy.read_syncdatalist(self.shutter_param, self.taghi, self.taglist)
+
+    def getPumpLaserStatus(self):
+        if self.args['TimeResolved']:
+           return self.dbpy.read_syncdatalist(self.shutter_param, self.taghi, self.taglist)
+        else:
+           return None
+
+    def getPhotonEnergy(self):
+        return self.dbpy.read_syncdatalist(self.energy_param, self.taghi, self.taglist)
+
+    def computeDark(self):
+        self.dark = np.zeros(self.raw_shape,dtype=np.float64)
+
+        i=0
+        while int(self.ShutterStatus[i]) == 0:
+            #Here get image of a given tag using taglist(tag)
+            self.retrieveData(self.taglist[i])
+            self.dark += self.data
+            i+=1
+        self.dark /= i+1
+
+    def run(self):
+        self.computeDark()
+        self.Start = self.ShutterStatus.index('1')
+        mytags = [i for i in range(self.taglist[self.Start],self.taglist[-1]+1) if (i+rank)%size == 0]
+
+        for i,tag in enumerate(mytags):
+            self.Ntotal += 1
+            #Here get img
+            self.retrieveData(tag)
+
+            if IsHit(self.data - self.dark, self.args['threshold'], self.args['npixels']):
+                self.Nhits += 1
+                self.SaveHits.saveHit(self.data - self.dark, self.PhotoEnergy[i+self.Start],  self.PumpLaserStatus[i+self.Start])
+                # Save hit (photonenergy of a given index
+                # h5 - timeresolved
+
+    #def retrieveDark(self , tag):
+
+
+    def retrieveData(self,tag):
+
+        for i in range(len(self.detName)):
+            self.StorageReaders[i].collect(tag)
+            self.data[i * self.raw_shape[0], (i+1) * self.raw_shape[0], :] = self.StorageBuffers[i].read_det_data() #- self.dark[i * self.raw_shape[0], (i+1) * self.raw_shape[0], :]
+
+
+
+
