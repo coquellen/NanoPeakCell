@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 
 from multiprocessing import Process
-
+from NPC.utils import  Log
 import pyqtgraph as pg
 import zmq
 from PyQt4 import  QtGui, QtCore
 from NPC.gui.Views import ImageViewOnline, XPView, HitLive, MaxProjViewOnline
 
-from NPC.gui.online.EigerLive_process import loadBalancer, workerEiger
+from NPC.gui.online.EigerLive_process import loadBalancer, MPloadBalancer, workerEiger
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 app = QtGui.QApplication([])
 import inspect, time, json , os
-import argparse
+import argparse, requests
 
 
 class LiveMenuBar(QtGui.QMenuBar):
@@ -119,8 +119,8 @@ class LiveEiGerController(object):
         self.HF = HF
 
 
-        # The hit view will process results coming from workers (PULL socket @ 5558)
-        # The hit view will send parameters to workers (PUB socket @ 5559)
+        # The gui (HitLiveView object) will receive stats from hit-finding coming from workers (PULL socket @ 5558)
+        # The gui (HitLiveView object) can send hit-finding parameters to workers (PUB socket @ 5559)
         contextResultsReceiver = zmq.Context()
         self.resultsReceiver = contextResultsReceiver.socket(zmq.PULL)
         self.resultsReceiver.bind("tcp://127.0.0.1:5558")
@@ -129,7 +129,7 @@ class LiveEiGerController(object):
         self.controlSender = contextControlSender.socket(zmq.PUB)
         self.controlSender.bind("tcp://127.0.0.1:5559")
 
-        # The Viewer (client) will send request to the Load Balancer @ 5570
+        # The ImageViewer will send request to the Load Balancer @ 5570
         # the Load Balancer will forward the request to an available worker.
         # The given worker send his reply to the load Balancer (an image), which forwards to the Viewer
         # The workers are flagged as available, once they send such message to the Load Balancer (Here "READY")
@@ -139,18 +139,19 @@ class LiveEiGerController(object):
         imgSocket.RCVTIMEO = 2200
         imgSocket.connect('tcp://localhost:5570')
 
+        # The MaxProjView object will send request to the MP Load Balancer @ 5560 to retrieve the latest maximum projection (MP)
+        # The MP Load Balancer collects individual maximum projection (MP) from workers (backend), and compute the overall MP
         maxProjSocket = zmq.Context().socket(zmq.REQ)
         maxProjSocket.identity = u"MaxProj-Client".format(1).encode("ascii")
-        imgSocket.RCVTIMEO = 2200
-        maxProjSocket.connect('tcp://localhost:5570')
+        maxProjSocket.RCVTIMEO = 3200
+        maxProjSocket.connect('tcp://localhost:5560')
 
-        self.XPView = XPView(True)
+        self.XPView = XPView(Live=True)
         self.XPView.setupData()
         self.HitLiveView = HitLive(self, self.resultsReceiver, self.controlSender)
-        self.ImageView = ImageViewOnline(self.XPView, binning=2, name='ImageView', zmqSocket = imgSocket, req = "HIT", timeout = 250)
-        #XPView, binning, name, imgSocket, req, timeout
-        self.ImageView.setWindowTitle("NPC - Frames")
-        self.MaxProjView = MaxProjViewOnline(self.XPView, binning=1, name='MaxProj', zmqSocket=maxProjSocket, req = "MAXPROJ", timeout = 2000)
+        self.ImageView = ImageViewOnline(self.XPView, binning=2, name='ImageView', zmqSocket=imgSocket, req="HIT", timeout=250)
+        self.ImageView.setWindowTitle("NPC - Hits")
+        self.MaxProjView = MaxProjViewOnline(self.XPView, binning=1, name='MaxProj', zmqSocket=maxProjSocket, req="MAXPROJ", timeout=10000)
         self.MaxProjView.setWindowTitle("NPC - Maximum Projection")
 
         self.menuBar = LiveMenuBar(self.ImageView, self)
@@ -175,8 +176,10 @@ class LiveEiGerController(object):
         self.views = [self.ImageView, self.XPView, self.HitLiveView, self.MaxProjView]
 
         self.restoreState()
+        self.MaxProjView.__init_shape__(self.HF.shape)
 
         Process(target=loadBalancer, args=(self.HF,)).start()
+        Process(target=MPloadBalancer, args=(self.HF,)).start()
 
     def toggleResRings(self):
         if not self.ImageView.toggleResRings():
@@ -261,6 +264,7 @@ class LiveEiGerController(object):
         except:
             settings['maskFN'] = ""
 
+        settings['shape'] = self.XPView.detector.shape
         with open(os.path.expanduser('~/.NPGLiverc.json'), 'w') as outfile:
             json.dump(settings, outfile)
 
@@ -273,6 +277,12 @@ class LiveEiGerController(object):
         if os.path.exists(jsonFile):
             settings = json.loads(open(jsonFile).read())
         else:
+            index = self.XPView.ui.Detector.findText("Eiger%s" % HF.Eiger)
+            self.XPView.ui.Detector.setCurrentIndex(index)
+            self.HF.x2, self.HF.y2 = self.HF.shape
+            self.HF.roi = [self.HF.x1, self.HF.y1, self.HF.x2, self.HF.y2]
+            self.HF.shape = self.XPView.detector.shape
+
             return
 
         for i in range(len(views)):
@@ -333,45 +343,54 @@ class LiveEiGerController(object):
                     if value != None:
                         obj.setDown(value)
 
+
+        if self.HF.threshold == None:
+            self.HF.threshold = int(self.HitLiveView.ui.thresh.text())
+            Log("Restoring threshold value from previous run (%i)" %self.HF.threshold)
+        else:
+            Log("Setting Threshold Value from command line to %i " %self.HF.threshold)
+            self.HitLiveView.ui.thresh.setText(str(self.HF.threshold))
+
+        if self.HF.npixels == None:
+            self.HF.npixels = int(self.HitLiveView.ui.npix.text())
+            Log("Restoring NPixels Value from previous run (%i)" % self.HF.npixels)
+        else:
+            Log("Setting NPixels Value from command line to %i" %self.HF.npixels)
+            self.HitLiveView.ui.npix.setText(str(self.HF.npixels))
+
+        if hasattr(self.HF, "shape"):
+            index = self.XPView.ui.Detector.findText("Eiger%s"%HF.Eiger)
+            self.XPView.ui.Detector.setCurrentIndex(index)
+            self.HF.x2, self.HF.y2 = self.HF.shape
+        else:
+            self.HF.x1 = int(self.HitLiveView.ui.ROIX1.text())
+            self.HF.x2 = int(self.HitLiveView.ui.ROIX2.text())
+            self.HF.y1 = int(self.HitLiveView.ui.ROIY1.text())
+            self.HF.y2 = int(self.HitLiveView.ui.ROIY2.text())
+        self.HF.roi = [self.HF.x1, self.HF.y1, self.HF.x2, self.HF.y2]
+        self.HF.shape = self.XPView.detector.shape
+        Log("%i %i" %self.HF.shape)
+
         # Do not forget to restore the object attributes to the widget values.
         self.ImageView.setAttr()
         self.MaxProjView.setAttr()
         self.XPView.setupData()
         self.HitLiveView.getROI()
 
-        if self.HF.threshold == None:
-            self.HF.threshold = int(self.HitLiveView.ui.thresh.text())
-            print("Restoring threshold value from previous run (%i)" %self.HF.threshold)
-        else:
-            print("Setting Threshold Value from command line to %i " %self.HF.threshold)
-            self.HitLiveView.ui.thresh.setText(str(self.HF.threshold))
-
-        if self.HF.npixels == None:
-            self.HF.npixels = int(self.HitLiveView.ui.npix.text())
-            print("Restoring NPixels Value from previous run (%i)" % self.HF.npixels)
-        else:
-            print("Setting NPixels Value from command line to %i" %self.HF.npixels)
-            self.HitLiveView.ui.npix.setText(str(self.HF.npixels))
-
-        self.HF.x1 = int(self.HitLiveView.ui.ROIX1.text())
-        self.HF.x2 = int(self.HitLiveView.ui.ROIX2.text())
-        self.HF.y1 = int(self.HitLiveView.ui.ROIY1.text())
-        self.HF.y2 = int(self.HitLiveView.ui.ROIY2.text())
-
         if self.HF.maskFN == None:
             try:
                 self.maskFile = settings['maskFN']
-                print("Restoring Mask File from previous run: %s" %self.maskFile)
+                Log("Restoring Mask File from previous run: %s" %self.maskFile)
             except KeyError:
                 self.maskFile = ""
-                print("No Mask will be used for this run")
+                Log("No Mask will be used for this run")
         else:
             if self.HF.maskFN is not None:
-                print("Setting Mask File from command line: %s" %self.HF.maskFN)
+                Log("Setting Mask File from command line: %s" %self.HF.maskFN)
                 self.maskFile = self.HF.maskFN
             else:
                 self.maskFile = ""
-                print("No Mask will be used for this run")
+                Log("No Mask will be used for this run")
 
         if self.maskFile:
             self.HF.maskFN = self.maskFile
@@ -384,29 +403,36 @@ class LiveEiGerController(object):
 
 class HitFinderParameters(object):
 
+    EigerShapes = {'500k': (512 , 1030),
+                   '1m'  : (1065, 1030),
+                   '4m'  : (2167, 2070),
+                   '9m'  : (3269, 3110),
+                   '16m' : (4371, 4150)}
     def __init__(self, args):
 
-        self.threshold = args.threshold
-        self.npixels = args.npixels
-        self.maskFN = args.maskFN
-        self.ip = args.ip
+        #print(args)
+        self.threshold = args.threshold[0]
+        self.npixels = args.pixels[0]
+        self.maskFN = args.mask[0]
+        self.ip = args.ip[0]
+        self.ncpus = args.cpus[0]
 
         self.x1 = 0
         self.y1 = 0
-        self.x2 = 2167
-        self.y2 = 2070
+        self.x2 = 0
+        self.y2 = 0
+        #self.shape = None
+        self.Eiger = args.Eiger[0]
+        if self.Eiger is not None:
+            self.shape = self.EigerShapes[self.Eiger.lower()]
+            self.x2 = self.shape[0]
+            self.y2 = self.shape[1]
         self.roi = [self.x1, self.y1, self.x2, self.y2]
-        self.shape = (2167,2070)
         self.RADDAM = False
         self.NShots = 0
         self.STOP = 0
         self.mask = None
-
-        print(args['ip'])
-        try:
-            self.ip = args['ip'][0]
-        except TypeError:
-            self.ip = None
+        self.debug = args.debug
 
 
 class ArgumentParser(argparse.ArgumentParser):
@@ -423,25 +449,55 @@ class ArgumentParser(argparse.ArgumentParser):
                        help="Number of pixels above threshold needed to consider a hit (optional)")
         self.add_argument("-m","--mask", nargs= 1, type= str, default= [None],
                        help="Mask to be used (optional)")
-        self.add_argument("-ip","--ip", nargs= 1, type= str, default= None,
+        self.add_argument("-ip","--ip", nargs= 1, type= str, default= [None],
                        help="Eiger IP address")
-        self.add_argument("-e", "--Eiger", nargs=1, type=str, default='4M',
-                          help="Eiger model (1M, 4M, 9M or 16M)")
+        self.add_argument("-e", "--Eiger", nargs=1, type=str, default= [None],
+                          help="Eiger model: 500k, 1M, 4M, 9M or 16M")
+        self.add_argument("-d", "--debug", action='store_true',
+                          help="debugging mode")
 
         self.args = self.parse_args()
 
     def check_input(self):
-        if self.args.ip == None:
-            print("Sorry: the ip address of the detector is required")
+        jsonFile = os.path.expanduser('~/.NPGLiverc.json')
+
+        if self.args.ip[0] == None:
+            Log("Sorry: the ip address of the detector is required")
             return False
+
+        elif not os.path.exists(jsonFile)  and self.args.Eiger == [None]:
+            self.print_help()
+            Log("Please provide the model of the Eiger for the first launch!!!")
+
+
         else:
-            self.cpus = self.args.cpus[0]
-            self.ip = self.args.ip[0]
-            self.threshold = self.args.threshold[0]
-            self.npixels = self.args.pixels[0]
-            self.maskFN = self.args.mask[0]
-            return True
-            # Here should check the ip address
+            # Here should check the ip address if not in debug mode
+            if not self.args.debug:
+                try:
+                    r = requests.get("http://%s/stream/api/1.3.1/config/mode" % self.args.ip[0],timeout=0.01)
+                    if r.status_code == 200:
+                        streamMode = r.json()["value"]
+                        if streamMode == 'disabled':
+
+                            Log("--- Attention !!! The stream mode of the Eiger is disabled\n--- Enabling Stream mode...")
+                            data = json.dumps({'value': 'enabled'})
+                            r = requests.put("http://%s/stream/api/1.3.1/config/mode" % self.args.ip[0], data=data)
+                            if r.status_code == 200:
+                                Log("--- Stream mode enabled")
+                                return True
+                            else:
+                                Log("--- Error while enabling stream mode... Exiting")
+                                return False
+                        else:
+                            Log("--- Stream mode is already enabled")
+                            return True
+                    else:
+                        Log("--- Error communicating with Eiger (Error HTML %i)" %r.status_code)
+                        return False
+                except requests.exceptions.ConnectionError:
+                    Log("--- Failed to establish a connection with the Eiger @ %s... Exiting" %self.args.ip[0])
+            else:
+                return True
 
             #
             #try:
@@ -468,15 +524,15 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     if parser.check_input():
 
-        HF = HitFinderParameters(parser)
-        worker_pool = range(parser.cpus)
-        for wrk_num in range(len(worker_pool)):
-            #printwrk_num
+        HF = HitFinderParameters(parser.args)
+
+        Ncpus = parser.args.cpus[0]
+        for wrk_num in range(Ncpus):
             Process(target=workerEiger, args=(wrk_num,HF)).start()
 
         #Process(target=ventilator, args=()).start()
         myapp = LiveEiGerController(app, HF)
         sys.exit(app.exec_())
-    else:
-        parser.print_usage()
+    #else:
+    #    parser.print_usage()
 
