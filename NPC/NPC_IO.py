@@ -83,20 +83,23 @@ class HDF5(object):
             self.h5 = h5py.File(FileName)
             self.dset = self.h5.create_dataset("data", (self.NframesPerH5, self.size0, self.size1), compression='gzip',
                                                chunks=(1, self.size0, self.size1))
-
+            if self.energy:
+                self.Edset = self.h5.create_dataset("energy", (self.NframesPerH5,))
 
     def CloseH5(self):
         shape = (self.Nhits % self.NframesPerH5, self.size0, self.size1)
         self.dset.resize(shape)
-        #if self.args.experiment == 'LCLS':
-        #  self.Edset.resize(self.Nhits % self.NframesPerH5)
+        if self.energy:
+          self.Edset.resize(self.Nhits % self.NframesPerH5)
         self.h5.close()
 
 
 class HDF5_TR(object):
+
     def __init__(self, args, energy = False):
         self.args = args
         self.NframesPerH5 = 100
+        self.N = 0
         self.size0, self.size1 = args
         self.size1 = args.detector.shape[1]
         self.energy = energy
@@ -152,9 +155,16 @@ class HDF5_TR(object):
             self.h5s[laser_status] = h5py.File(FileName)
             self.dsets[laser_status] = self.h5s[laser_status].create_dataset("data", (self.NframesPerH5, self.size0, self.size1), compression='gzip',
                                            chunks=(1, self.size0, self.size1))
+            self.N += 1
 
 
-
+    def CloseH5(self):
+        for i in range(0,2):
+            shape = (self.Nhits[i] % self.NframesPerH5, self.size0, self.size1)
+            self.dsets[i].resize(shape)
+            if self.energy:
+                self.Edsets[i].resize(self.Nhits[i] % self.NframesPerH5)
+            self.h5s[i].close()
 
 
 class PICKLES(object):
