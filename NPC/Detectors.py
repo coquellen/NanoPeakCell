@@ -1,11 +1,10 @@
 import numpy as np
-from pyFAI.detectors import Detector
+#from pyFAI.detectors import Detector
 
 
-class MPCCD(Detector):
+class MPCCD(object):
     def __init__(self):
-        Detector.__init__(self)
-        self.resolution=(2399,2399)
+        self.resolution=(8*1024,512)
         self.shape = self.resolution
         self.pixel1 = 5e-5
         self.pixel2 = 5e-5
@@ -13,9 +12,8 @@ class MPCCD(Detector):
         self.spline = None
 
 
-class CSPAD(Detector):
+class CSPAD(object):
     def __init__(self):
-        Detector.__init__(self)
         self.resolution=(1750,1750)
         self.shape = self.resolution
         self.pixel1 = 11e-5
@@ -23,9 +21,8 @@ class CSPAD(Detector):
         self.mask = np.zeros(self.shape)
         self.spline = None
 
-class Electron(Detector):
+class Electron(object):
     def __init__(self):
-        Detector.__init__(self)
         self.resolution=(4096,4096)
         self.shape = self.resolution
         self.pixel1 = 1.5e-5
@@ -34,9 +31,8 @@ class Electron(Detector):
         self.spline = None
 
 
-class Eiger_4M_fake(Detector):
+class Eiger_4M_fake(object):
     def __init__(self):
-        Detector.__init__(self)
         self.resolution=(700,600)
         self.shape = self.resolution
         self.pixel1 = 7.5e-5
@@ -44,9 +40,8 @@ class Eiger_4M_fake(Detector):
         self.mask = np.zeros(self.shape)
         self.spline = None
 
-class Frelon(Detector):
+class Frelon(object):
     def __init__(self):
-        Detector.__init__(self)
         self.resolution=(1024,1024)
         self.shape = self.resolution
         self.pixel1 = 102e-6
@@ -54,9 +49,8 @@ class Frelon(Detector):
         self.mask = np.zeros(self.shape)
         self.spline = None
 
-class AgipD(Detector):
+class AgipD(object):
     def __init__(self):
-        Detector.__init__(self)
         self.resolution = (2000, 2000)
         self.shape = self.resolution
         self.pixel1 = 2.0e-4

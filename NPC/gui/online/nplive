@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from multiprocessing import Process
 
 import pyqtgraph as pg
@@ -132,15 +134,19 @@ class LiveEiGerController(object):
         # The given worker send his reply to the load Balancer (an image), which forwards to the Viewer
         # The workers are flagged as available, once they send such message to the Load Balancer (Here "READY")
         imgSocket = zmq.Context().socket(zmq.REQ)
-        imgSocket.identity = u"Client-{}".format(0).encode("ascii")
+        imgSocket.identity = u"Hit-Client".encode("ascii")
+        imgSocket.setsockopt(zmq.REQ_RELAXED, 1)
+        imgSocket.RCVTIMEO = 2200
         imgSocket.connect('tcp://localhost:5570')
 
         maxProjSocket = zmq.Context().socket(zmq.REQ)
-        maxProjSocket.identity = u"Client-{}".format(1).encode("ascii")
+        maxProjSocket.identity = u"MaxProj-Client".format(1).encode("ascii")
+        imgSocket.RCVTIMEO = 2200
         maxProjSocket.connect('tcp://localhost:5570')
 
-        self.HitLiveView = HitLive(self, self.resultsReceiver, self.controlSender)
         self.XPView = XPView(True)
+        self.XPView.setupData()
+        self.HitLiveView = HitLive(self, self.resultsReceiver, self.controlSender)
         self.ImageView = ImageViewOnline(self.XPView, binning=2, name='ImageView', zmqSocket = imgSocket, req = "HIT", timeout = 250)
         #XPView, binning, name, imgSocket, req, timeout
         self.ImageView.setWindowTitle("NPC - Frames")
@@ -165,6 +171,7 @@ class LiveEiGerController(object):
         self.HitLiveView.sigUpdateROI.connect(self.MaxProjView.view.roi.setPosNSize)
         self.MaxProjView.sigResetMP.connect(self.HitLiveView.sendResetMP)
 
+        self.XPView.ui.Detector.currentIndexChanged.connect(self.updateDetector)
         self.views = [self.ImageView, self.XPView, self.HitLiveView, self.MaxProjView]
 
         self.restoreState()
@@ -190,6 +197,13 @@ class LiveEiGerController(object):
                 self.menuBar.actionROI.setChecked(False)
             else:
                 self.menuBar.actionROI.setChecked(True)
+
+    def updateDetector(self):
+        self.XPView.getDetector()
+        self.HitLiveView.shape = self.XPView.detector.shape
+        self.HitLiveView.resetROI()
+        #print(self.HitLiveView.shape)
+        #if
 
     def closeApp(self):
         self.saveState()
@@ -326,14 +340,15 @@ class LiveEiGerController(object):
         self.HitLiveView.getROI()
 
         if self.HF.threshold == None:
-            print("Restoring Threshold Value from previous run")
             self.HF.threshold = int(self.HitLiveView.ui.thresh.text())
+            print("Restoring threshold value from previous run (%i)" %self.HF.threshold)
         else:
             print("Setting Threshold Value from command line to %i " %self.HF.threshold)
             self.HitLiveView.ui.thresh.setText(str(self.HF.threshold))
+
         if self.HF.npixels == None:
-            print("Restoring NPixels Value from previous run")
             self.HF.npixels = int(self.HitLiveView.ui.npix.text())
+            print("Restoring NPixels Value from previous run (%i)" % self.HF.npixels)
         else:
             print("Setting NPixels Value from command line to %i" %self.HF.npixels)
             self.HitLiveView.ui.npix.setText(str(self.HF.npixels))
@@ -344,17 +359,19 @@ class LiveEiGerController(object):
         self.HF.y2 = int(self.HitLiveView.ui.ROIY2.text())
 
         if self.HF.maskFN == None:
-            print("Restoring Mask File from previous run")
             try:
                 self.maskFile = settings['maskFN']
+                print("Restoring Mask File from previous run: %s" %self.maskFile)
             except KeyError:
                 self.maskFile = ""
+                print("No Mask will be used for this run")
         else:
             if self.HF.maskFN is not None:
                 print("Setting Mask File from command line: %s" %self.HF.maskFN)
                 self.maskFile = self.HF.maskFN
             else:
                 self.maskFile = ""
+                print("No Mask will be used for this run")
 
         if self.maskFile:
             self.HF.maskFN = self.maskFile
@@ -379,12 +396,13 @@ class HitFinderParameters(object):
         self.x2 = 2167
         self.y2 = 2070
         self.roi = [self.x1, self.y1, self.x2, self.y2]
+        self.shape = (2167,2070)
         self.RADDAM = False
         self.NShots = 0
         self.STOP = 0
         self.mask = None
 
-
+        print(args['ip'])
         try:
             self.ip = args['ip'][0]
         except TypeError:
@@ -405,12 +423,14 @@ class ArgumentParser(argparse.ArgumentParser):
                        help="Number of pixels above threshold needed to consider a hit (optional)")
         self.add_argument("-m","--mask", nargs= 1, type= str, default= [None],
                        help="Mask to be used (optional)")
-        self.add_argument("-ip","--ip", nargs= 1, type= str, default= [None],
+        self.add_argument("-ip","--ip", nargs= 1, type= str, default= None,
                        help="Eiger IP address")
+        self.add_argument("-e", "--Eiger", nargs=1, type=str, default='4M',
+                          help="Eiger model (1M, 4M, 9M or 16M)")
 
         self.args = self.parse_args()
 
-    def _check_input(self):
+    def check_input(self):
         if self.args.ip == None:
             print("Sorry: the ip address of the detector is required")
             return False
@@ -446,11 +466,12 @@ class ArgumentParser(argparse.ArgumentParser):
 if __name__ == '__main__':
     import sys
     parser = ArgumentParser()
-    if parser._check_input():
+    if parser.check_input():
 
         HF = HitFinderParameters(parser)
         worker_pool = range(parser.cpus)
         for wrk_num in range(len(worker_pool)):
+            #printwrk_num
             Process(target=workerEiger, args=(wrk_num,HF)).start()
 
         #Process(target=ventilator, args=()).start()
