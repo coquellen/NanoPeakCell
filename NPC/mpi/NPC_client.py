@@ -23,12 +23,12 @@ class Client(object):
     def __init__(self, options):
         self.options = options
         #self.detector = InitDetector(self.options)
-        self.options['shape'] = self.detector.shape
+        #self.options['shape'] = self.detector.shape
         self.options['rank'] = rank
-        self.roi = ROI(self.options, self.detector.shape)
+        #self.roi = ROI(self.options, self.detector.shape)
         #self.MaxProj = np.zeros(self.args.detector.shape)
-        self.SaveHits = SH(self.options)
-        self.DataCorrection = Correction(self.options, self.detector, self.roi)
+        #self.SaveHits = SH(self.options)
+        #self.DataCorrection = Correction(self.options, self.detector, self.roi)
         self.Ntotal = 0
         self.Nerr = 0
         self.Nhits = 0
@@ -235,7 +235,6 @@ class SSX_H5_Client(SSXClient):
 
             for i in self.getImagesIndexes(N, idx):
                 self.Ntotal += 1
-                md = mpidata()
                 #Performing Data Correction (i.e Dark Subtraction and Azimuthal Integration - The mask is used during the Background subtraction)
                 data = self.DataCorrection.DarkCorrection(self.h5[self.path][i,self.roi.xmin:self.roi.xmax, self.roi.ymin:self.roi.ymax])
 
@@ -254,6 +253,8 @@ class SSX_H5_Client(SSXClient):
                     self.nohitsIDX += "%s //%i\n" %(self.filenames[idx], i)
                 #Sending to the master
                 if self.Ntotal % 100 == 0:
+                    md = mpidata()
+
                     md.addarray(self.filenames[idx], data, self.Ntotal, self.Nhits, self.Nerr,(self.hitsIDX, self.nohitsIDX))
                     md.send()
                     self.Nerr = 0
@@ -268,11 +269,11 @@ class SACLAClient(Client):
 
     shutter_param = 'xfel_bl_3_shutter_1_open_valid/status'
     pump_param = ''
-    energy_param = ''
-    detName = ['MPCCD-8-2-001-%i'%i for i in range(1,9)]
+    detName = ['MPCCD-8-1-002-%i'%i for i in range(1,9)]
     raw_shape = (8 * 1024 ,512)
+    module_shape = (1024, 512)
     #rec_shape = (8 * 1024, 512)
-    data = np.zeros(raw_shape,dtype=np.float64)
+    data = np.zeros(raw_shape,dtype=np.float32)
     #tiled = np.zeros(raw_shape, dtype=np.float64)
 
     def __init__(self, args):
@@ -280,25 +281,27 @@ class SACLAClient(Client):
         self.args = args
         from NPC.Detectors import MPCCD
         self.detector = MPCCD()
+        self.args['shape'] = self.raw_shape
 
         self.SaveHits = SH(self.args, energy=True)
         #These are the offline SACLA APIS
         self.dbpy = __import__('dbpy')
         self.stpy = __import__('stpy')
 
-        self.bl = self.args['bl']
-        self.run = self.args['run']
+        self.bl = int(self.args['bl'])
+        self.runN = int(self.args['run'])
         ## This is SACLA specific and used in a lot of API functions
-        self.taghi =  self.dbpy.read_hightagnumber(self.bl,self.run)
-        self.taglist = self.dbpy.read_taglist_byrun(self.bl, self.run)
+        self.taghi =  self.dbpy.read_hightagnumber(self.bl,self.runN)
+        self.taglist = self.dbpy.read_taglist_byrun(self.bl, self.runN)
+
 
         #Getting some useful experimental info
         self.ShutterStatus = self.getShutterStatus()
         self.PumpLaserStatus = self.getPumpLaserStatus()
-        self.PhotoEnergy = self.getPhotonEnergy()
+        self.PhotonEnergy = self.getPhotonEnergy()
 
         #Dealing with data retrieval  #Not sure about the tuple of run numbers ...
-        self.StorageReaders = [self.stpy.StorageReader(detname,self.bl,(self.run,self.run)) for detname in self.detName]
+        self.StorageReaders = [self.stpy.StorageReader(detname,self.bl,(self.runN,self.runN)) for detname in self.detName]
         self.StorageBuffers = [self.stpy.StorageBuffer(SR) for SR in self.StorageReaders]
 
         #self.run()
@@ -308,15 +311,15 @@ class SACLAClient(Client):
 
     def getPumpLaserStatus(self):
         if self.args['TimeResolved']:
-           return self.dbpy.read_syncdatalist(self.shutter_param, self.taghi, self.taglist)
+           return self.dbpy.syncdatalist(self.pump_param, self.taghi, self.taglist)
         else:
-           return None
+            return [None for i in self.taglist]
 
     def getPhotonEnergy(self):
-        return self.dbpy.read_syncdatalist(self.energy_param, self.taghi, self.taglist)
+        return self.dbpy.read_config_photonenergy_in_keV(self.bl, self.runN) #self.dbpy.read_syncdatalist(self.energy_param, self.taghi, self.taglist)
 
     def computeDark(self):
-        self.dark = np.zeros(self.raw_shape,dtype=np.float64)
+        self.dark = np.zeros(self.raw_shape,dtype=np.float32)
 
         i=0
         while int(self.ShutterStatus[i]) == 0:
@@ -329,18 +332,31 @@ class SACLAClient(Client):
     def run(self):
         self.computeDark()
         self.Start = self.ShutterStatus.index('1')
-        mytags = [i for i in range(self.taglist[self.Start],self.taglist[-1]+1) if (i+rank)%size == 0]
+        myindexes = [i for i in range(self.Start,len(self.taglist)-1) if (i+rank-1)%(size-1) == 0]
+        print("Rank %i: N tags = %i"%(rank, len(myindexes)))
 
-        for i,tag in enumerate(mytags):
+        for i,idx in enumerate(myindexes):
             self.Ntotal += 1
             #Here get img
-            self.retrieveData(tag)
+            self.retrieveData(self.taglist[idx])
 
             if IsHit(self.data - self.dark, self.args['threshold'], self.args['npixels']):
                 self.Nhits += 1
-                self.SaveHits.saveHit(self.data - self.dark, self.PhotoEnergy[i+self.Start],  self.PumpLaserStatus[i+self.Start])
+                self.SaveHits.saveHit(self.data - self.dark, self.PhotonEnergy,  self.PumpLaserStatus[i+self.Start])
                 # Save hit (photonenergy of a given index
                 # h5 - timeresolved
+            if self.Ntotal % 10 == 0:
+                    md = mpidata()
+                    md.addarray(str(self.taglist[idx]), self.data, self.Ntotal, self.Nhits, self.Nerr,
+                                ('', ''))
+                    md.send()
+                    self.Nerr = 0
+                    self.Ntotal = 0
+                    self.Nhits = 0
+                    #self.hitsIDX = ""
+                    #self.nohitsIDX = ""
+        print("Rank %i finished" %rank)
+        md.endrun()
 
     #def retrieveDark(self , tag):
 
@@ -348,8 +364,8 @@ class SACLAClient(Client):
     def retrieveData(self,tag):
 
         for i in range(len(self.detName)):
-            self.StorageReaders[i].collect(tag)
-            self.data[i * self.raw_shape[0], (i+1) * self.raw_shape[0], :] = self.StorageBuffers[i].read_det_data() #- self.dark[i * self.raw_shape[0], (i+1) * self.raw_shape[0], :]
+            self.StorageReaders[i].collect(self.StorageBuffers[i], tag)
+            self.data[i * self.module_shape[0]: (i+1) * self.module_shape[0], :] = self.StorageBuffers[i].read_det_data(0) #- self.dark[i * self.raw_shape[0], (i+1) * self.raw_shape[0], :]
 
 
 

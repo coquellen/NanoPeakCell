@@ -49,7 +49,7 @@ class mpidata(object):
         recvRank = status.Get_source()
         if not self.small.endrun:
             for arrinfo in self.small.arrayinfolist:
-                if not hasattr(self,arrinfo.name[0]) or arr.shape!=arrinfo.shape or arr.dtype!=arrinfo.dtype:
+                if not hasattr(self,arrinfo.name[0]):# or arr.shape!=arrinfo.shape or arr.dtype!=arrinfo.dtype:
                     setattr(self,arrinfo.name[0],np.empty(arrinfo.shape,dtype=arrinfo.dtype))
 
                 arr = getattr(self,arrinfo.name[0])
