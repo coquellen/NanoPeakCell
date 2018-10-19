@@ -80,9 +80,9 @@ class OpenImage(object):
             if self.h5 is not None: self.h5.close()
             self.h5 = h5py.File(fn)
         if index is None:
-            return self.h5[path][:]
+            return self.h5[path][:].astype(np.int32)
         else:
-            return self.h5[path][index, ::]
+            return self.h5[path][index, ::].astype(np.int32)
 
     def openImg(self, fn):
         img = fabio.open(fn)
