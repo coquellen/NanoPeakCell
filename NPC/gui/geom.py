@@ -3,7 +3,7 @@ from scipy.ndimage.interpolation import rotate
 import os
 
 def grep(sequence, buffer):
-   return [line for line in sequence if buffer in line]
+   return [line for line in sequence if buffer in line and not line.startswith('bad')]
 
 def retrieve_geom_params(lines, tile):
     results = []
@@ -24,8 +24,8 @@ def parse_geom_file(filename, openfn=True):
     tiles = [ line.split('/')[0] for line in lines if 'max_fs' in line and 'bad_' not in line]
     for tile in tiles:
         params = retrieve_geom_params(lines, tile)
-        max_fs = max(max_fs, int(params[1])+1)
-        max_ss = max(max_ss, int(params[3])+1)
+        max_fs = max(max_fs, int(float(params[1]))+1)
+        max_ss = max(max_ss, int(float(params[3]))+1)
         geom_params[tile]= params
 
 
@@ -112,7 +112,7 @@ def DoReconstruct(data, geom_params, size):
 
     for params in geom_params.values():
 
-        min_fs, max_fs, min_ss, max_ss = [int(p) for p in params[0:4]]
+        min_fs, max_fs, min_ss, max_ss = [int(float(p)) for p in params[0:4]]
 
         x = float(params[4].split('x')[0])
         y = float(params[4].split('y')[0].split('x')[1])
@@ -157,7 +157,8 @@ def DoReconstruct(data, geom_params, size):
             xmax = int(round((size / 2) - delta_y))
             ymin = int(round((size / 2) + delta_x))
             ymax = int(round((size / 2) + delta_x + rot.shape[1]))
-        #print alpha, xmin, xmax, ymin, ymax
+        print alpha, xmin, xmax, ymin, ymax, rot.shape
+        #print
         reconstructed[xmin:xmax, ymin:ymax] = rot
 
     return reconstructed[:,::-1]
@@ -240,7 +241,7 @@ def reconstruct(data,geom):
     if data.shape == shape:
 
         if len(geom_params) == 64: return DoReconstruct(data,geom_params,size=1800)
-        if len(geom_params) == 8: return DoReconstruct(data, geom_params, size=1600)
+        if len(geom_params) == 8: return DoReconstruct(data, geom_params, size=2400)
         if len(geom_params) == 128: return DoReconstruct(data, geom_params, size=2000)
 
     else:
