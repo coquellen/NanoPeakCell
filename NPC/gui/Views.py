@@ -471,7 +471,7 @@ class ImageView(QMainWindow):
     def setDetector(self):
         self.XPView.getDetector()
         self.setResRingsPosition()
-        self.xmax, self.ymax = self.XPView.detector.shape
+        self.ymax, self.xmax = self.XPView.detector.shape
         if self.binning == 1:
             self.Imin = 0
             self.Imax = 1
@@ -642,19 +642,19 @@ class ImageViewOnline(ImageView):
         self.setImg(data)
 
     def sendRequest(self):
-        if self.sendReq:
-            self.zmqSocket.send(self.request)
-            self.sendReq = False
+        self.zmqSocket.send(self.request)
+
         try:
             md = self.zmqSocket.recv_json(zmq.NOBLOCK)
             data = self.zmqSocket.recv(copy=False, track=False)
             buf = buffer(data)
             A = np.frombuffer(buf, dtype=md['dtype']).reshape(md['shape'])
             self.proc(A)
-            self.sendReq = True
+            #self.sendReq = True
 
         except:
-            pass
+            tmp = self.zmqSocket.recv()
+            #print tmp
 
 
 class MaxProjViewOnline(ImageViewOnline):
@@ -667,7 +667,6 @@ class MaxProjViewOnline(ImageViewOnline):
     def __init__(self, XPView, binning, name, zmqSocket, req, timeout):
         super(MaxProjViewOnline, self).__init__(XPView, binning, name, zmqSocket, req, timeout)
 
-        self.MP = np.zeros((2167, 2070))
 
         ###Adding some extra widgets
         self.ui.layoutWidget.setGeometry(QtCore.QRect(10, 30, 209, 211))
@@ -684,12 +683,25 @@ class MaxProjViewOnline(ImageViewOnline):
         self.ui.verticalLayout.addWidget(self.ui.SaveMP)
         self.ui.SaveMP.clicked.connect(self.saveMP)
 
+
+    def __init_shape__(self, shape):
+        self.shape = shape
+        self.MP = np.zeros(self.shape)
+
+    def sendRequest(self):
+        self.zmqSocket.send(self.request)
+        md = self.zmqSocket.recv_json()
+        data = self.zmqSocket.recv(copy=False, track=False)
+        buf = buffer(data)
+        A = np.frombuffer(buf, dtype=md['dtype']).reshape(md['shape'])
+        self.proc(A)
+
+
     def proc(self, data):
-        self.MP = np.maximum(self.MP, data)
-        self.setImg(self.MP)
+        self.setImg(data)
 
     def resetMP(self):
-        self.MP = np.zeros((2167,2070))
+        self.MP = np.zeros(self.shape)
         self.setImg(self.MP)
         self.saveMP()
         self.sigResetMP.emit()
@@ -758,7 +770,7 @@ class XPView(NPGWidget):
             self.ui.beamX.setText(str(self.bx))
             self.ui.beamY.setText(str(self.by))
 
-    def getDetector(self):
+    def getDetector(self,verbose=False):
         det = self.ui.Detector.currentText()
         try:
             self.detector = pyFAI.detectors.Detector.factory(str(det))
@@ -766,7 +778,7 @@ class XPView(NPGWidget):
             self.detector = get_class("NPC.Detectors", str(det))()
         self.psx = self.detector.pixel1
         self.psy = self.detector.pixel2
-        print("Detector updated to %s" % str(det))
+        if verbose: Log("Detector updated to %s" % str(det))
 
     def closeEvent(self, evt):
         if evt.spontaneous():
@@ -802,7 +814,7 @@ class CsPADGeom(NPGWidget):
             inc = int(self.ui.lineEdit.text())
             return inc
         except ValueError:
-            print "The increment should be an integer"
+            print("The increment should be an integer")
             return
 
     def closeEvent(self, evt):
@@ -1320,6 +1332,7 @@ class HitLive(NPGWidget):
         self.totalHits = 0
         self.counter = 0
 
+        self.shape = self.parent.XPView.detector.shape
         # Hit rate will be averaged over smoothingPeriod
         # As the plot is refreshed every second, this correspond to a minute of processing
         self.smoothingPeriod= 120
@@ -1380,8 +1393,6 @@ class HitLive(NPGWidget):
         except ValueError:
             print("Please use an integer for this parameter...")
 
-
-
     def setThreshold(self):
         try:
             thresh = int(self.ui.thresh.text())
@@ -1406,15 +1417,16 @@ class HitLive(NPGWidget):
 
     def setROI(self, roi):
         x1, y1, x2, y2 = roi
+        print(x1,y1,x2,y2)
         x1 = int(max(0, x1))
         y1 = int(max(0, y1))
-        x2 = int(min(2167, x2))
-        y2 = int(min(2070, y2))
+        x2 = int(min(self.shape[1], x2))
+        y2 = int(min(self.shape[0], y2))
         self.ui.ROIX1.setText(str(x1))
         self.ui.ROIX2.setText(str(x2))
         self.ui.ROIY1.setText(str(y1))
         self.ui.ROIY2.setText(str(y2))
-
+        print(self.shape)
         self.controlSender.send_json({'x1': x1, 'x2': x2, 'y1': y1, 'y2': y2})
 
     def setLabel(self):
@@ -1440,17 +1452,17 @@ class HitLive(NPGWidget):
             if x2 < x1:
                 x2 = x1 + 1
                 self.ui.ROIX2.setText(str(x2))
-            if x2 > 2167:
-                x2 = 2167
+            if x2 > self.shape[1]:
+                x2 = self.shape[1]
                 self.ui.ROIX2.setText(str(x2))
 
             y2 = int(self.ui.ROIY2.text())
             if y2 < y1:
                 y2 = y1 + 1
-                self.ui.ROIX2.setText(str(y2))
-            if y2 > 2070:
-                y2 = 2070
-                self.ui.ROIX2.setText(str(y2))
+                self.ui.ROIY2.setText(str(y2))
+            if y2 > self.shape[0]:
+                y2 = self.shape[0]
+                self.ui.ROIY2.setText(str(y2))
 
 
             self.controlSender.send_json({'x1': x1, 'x2': x2, 'y1': y1, 'y2': y2})
@@ -1462,8 +1474,8 @@ class HitLive(NPGWidget):
     def resetROI(self):
         x1 = 0
         y1 = 0
-        x2 = 2167
-        y2 = 2070
+        x2 = self.shape[1]
+        y2 = self.shape[0]
         self.ui.ROIX1.setText(str(x1))
         self.ui.ROIX2.setText(str(x2))
         self.ui.ROIY1.setText(str(y1))
@@ -1472,7 +1484,7 @@ class HitLive(NPGWidget):
         self.sigUpdateROI.emit((x1, y1, x2, y2))
 
     def sendResetMP(self):
-        self.controlSender.send(b"resetMP")
+        self.controlSender.send_json({"resetMP":"resetMP"})
 
     def receiveFromWorkers(self):
         while True:

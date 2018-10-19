@@ -1,5 +1,5 @@
 import zmq
-import datetime
+import datetime, time
 from PyQt4.QtCore import QTimer
 import lz4
 import bitshuffle
@@ -7,9 +7,58 @@ import numpy as np
 import json
 import struct
 import os
-from multiprocessing import Process
-# id30a3 encoding is bs16-lz4<
-# WHY ?
+
+
+class ZmqTimerManager(object):
+    def __init__(self):
+        self.timers = []
+        self.next_call = 0
+
+    def add_timer(self, timer):
+        self.timers.append(timer)
+
+    def check(self):
+        if time.time() > self.next_call:
+            for timer in self.timers:
+                timer.check()
+
+    def get_next_interval(self):
+        if time.time() >= self.next_call:
+            call_times = []
+            for timer in self.timers:
+                call_times.append(timer.get_next_call())
+            self.next_call = min(call_times)
+            if self.next_call < time.time():
+                return 0
+            else:
+                return (self.next_call - time.time()) * 1000
+        else:
+            return (self.next_call - time.time()) * 1000
+
+
+class ZmqTimer(object):
+    def __init__(self, interval, callback, *args):
+        self.interval = interval
+        self.callback = callback
+        self.last_call = 0
+        self.backend, self.workers_MP, self.client, self.request = args
+
+        self.N = 0
+
+
+    def check(self):
+        if time.time() > (self.interval + self.last_call) and len(self.workers_MP) > 0:
+            self.callback(self.backend, self.workers_MP[self.N % len(self.workers_MP)], self.client, self.request)
+            #self.backend.send_multipart([self.workers_MP[self.N % len(self.workers_MP)], b"", "MaxProj-Client", b"", "MAXPROJ"])
+            self.N += 1
+            print self.workers_MP, len(self.workers_MP)
+            if self.N % len(self.workers_MP) == 0: self.N = 0
+
+            self.last_call = time.time()
+
+    def get_next_call(self):
+        return self.last_call + self.interval
+
 
 class ZMQPush(object):
     def __init__(self, host, port, opts=[], flags=0, meth = 'tcp', verbose=False):
