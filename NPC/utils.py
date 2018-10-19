@@ -30,11 +30,15 @@ def check_input(options):
     :return: bool, message
     """
     # Check that the input directory file exists
+    print options['experiment']
+    print options['output_directory']
+    return True, ""
     if not os.path.exists(options['output_directory']):
         print("Output directory does not exist - Creating it")
         mkdir_p(options['output_directory'])
-    if not os.path.exists(options['data']):
-        return False, "Error: No such directory: %s" % options['data']
+    if  options['experiment'] == 'SSX':
+        if not os.path.exists(options['data']):
+            return False, "Error: No such directory: %s" % options['data']
     elif options['shootntrap'] and options['HitFile'] is not None:
         return False, "Error: you cannot provide a hit list file with the shootntrap option turned on."
     else:
@@ -91,7 +95,7 @@ def check_intall(options):
 def create_results_folders(options):
     results_folder = options['output_directory']
     num = options['num']
-    root = options['filename_root']
+    #root = options['filename_root']
 
     dir = "NPC_run%s" %num.zfill(3)
     os.mkdir(os.path.join(results_folder,dir))

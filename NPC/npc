@@ -6,7 +6,7 @@ except ImportError:
     import configparser as ConfigParser
 import os.path
 import sys
-from NPC.utils import parseBoolString, create_results_folders, check_input, get_result_folder_number, presenter
+from NPC.utils import parseBoolString, create_results_folders, check_input, get_result_folder_number, presenter, parseHits
 
 Experimental_Setup = {
     'detector': (str, 'None'),
@@ -41,8 +41,13 @@ IO_SSX = {
     'output_directory': (str, '.'),
     'dark': (str, 'None')}
 
-IO_SFX_SACLA = {'runs': (str, None),
-                'output_directory': (str, None)}
+IO_SFX_SACLA = {'bl': (int,3),
+                'run': (str, None),
+                'TimeResolved': (parseBoolString,'False'),
+                'output_directory': (str, None),
+                'output_formats': (list, []),
+                'crystfel':(parseBoolString, 'False')
+                }
 
 IO_SFX_LCLS = {
             'experiment': (str, None),
@@ -88,7 +93,9 @@ class NpcGenericParser(ConfigParser.RawConfigParser):
 
         for option in ['experiment', 'parallelism', 'background_subtraction']:
             self.get_selection('General', option, True)
+
         self.get_selection('Input-Output', 'output_formats', False)
+
 
         # Expand all directories to absolute path
         self.get_path('Input-Output', 'data')
@@ -105,14 +112,15 @@ class NpcGenericParser(ConfigParser.RawConfigParser):
         self.mapping[dic][option] = path
 
     def get_selection(self, dic,option, unique=False):
-        opt = self.get(dic,option)
-        new_option = get_param(opt)
-        if unique and len(new_option) > 1:
-            raise ValueError("Error. Unique selection only for option '{}'  (Your choice: {})".format(option,opt))
-
-
-        else:
-            self.mapping[dic][option] = ' '.join(new_option)
+        try:
+            opt = self.get(dic,option)
+            new_option = get_param(opt)
+            if unique and len(new_option) > 1:
+                raise ValueError("Error. Unique selection only for option '{}'  (Your choice: {})".format(option, opt))
+            else:
+                self.mapping[dic][option] = ' '.join(new_option)
+        except:
+            return
 
     def get_experiment(self):
         """
@@ -186,8 +194,8 @@ def startMPI(options):
                 else:
                     Client = getattr(NPC_client, '%sClient' % options['experiment'])(options)
 
-            if options['experiment'] == 'SACLA':
-                Client = getattr(NPC_client, '%sClient' % options['experiment'])(options)
+            if 'SACLA' in options['experiment']:
+                Client = getattr(NPC_client, 'SACLAClient')(options)
 
             Client.run()
         else:
@@ -204,7 +212,7 @@ if __name__ == '__main__':
         try:
             hitFile = sys.argv[2]
             if os.path.isfile(hitFile):
-                options['HitFile'] = utils.parseHits(hitFile)
+                options['HitFile'] = parseHits(hitFile)
             else: print("Sorry: NPC hit file not found (%s)"%hitFile)
         except IndexError:
             options['HitFile'] = None
@@ -215,15 +223,17 @@ if __name__ == '__main__':
             options['config_file'] = config_file
             npc_parser = NpcGenericParser(config_file)
             for key in npc_parser.mapping:
-
                 options.update(npc_parser.mapping[key])
             options['num'] = get_result_folder_number(options)
             results = os.path.join(options['output_directory'], 'NPC_run%s' %options['num'].zfill(3))
             options['json_file'] = os.path.join(results, 'NPC_params.json')
 
+            if 'SFX' in options['experiment']: options['filename_root'] = 'run_%s' %options['run']
+
             if options['parallelism'] == 'MPI':
                 startMPI(options)
             else:
+               #print options
                 valid, m = check_input(options)
                 if valid:
 
