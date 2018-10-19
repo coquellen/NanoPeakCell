@@ -6,6 +6,18 @@
 #
 # WARNING! All changes made in this file will be lost!
 
+Pilatus_list = ["Pilatus%iM" for i in [1,2,6]]
+
+Eiger_list = ["Eiger500k",
+            "Eiger1M",
+            "Eiger4M",
+            "Eiger9M",
+            "Eiger16M"]
+
+otherDet_list = ['CsPAD', 'MPCCD', 'AgipD', 'RayonixMx225hs']
+
+det_list = Pilatus_list + Eiger_list + otherDet_list
+
 from PyQt4 import QtCore, QtGui
 
 try:
@@ -104,33 +116,14 @@ class Ui_Form(object):
         Form.setWindowTitle(_translate("Form", "Experimental Settings", None))
         self.label_13.setText(_translate("Form", "Detector", None))
         if not Live:
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.setItemText(0, _translate("Form", "Pilatus1M", None))
-            self.Detector.setItemText(1, _translate("Form", "Pilatus2M", None))
-            self.Detector.setItemText(2, _translate("Form", "Pilatus6M", None))
-            self.Detector.setItemText(3, _translate("Form", "EIger1M", None))
-            self.Detector.setItemText(4, _translate("Form", "Eiger4M", None))
-            self.Detector.setItemText(5, _translate("Form", "Eiger16M", None))
-            self.Detector.setItemText(6, _translate("Form", "MPCCD", None))
-            self.Detector.setItemText(7, _translate("Form", "CSPAD", None))
-            self.Detector.setItemText(8, _translate("Form", "AgipD", None))
-            self.Detector.setItemText(9, _translate("Form", "RayonixMx225hs", None))
+            for i in range(len(det_list)):
+                self.Detector.addItem(_fromUtf8(""))
+                self.Detector.setItemText(i, _translate("Form", det_list[i], None))
         else:
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.addItem(_fromUtf8(""))
-            self.Detector.setItemText(0, _translate("Form", "EIger1M", None))
-            self.Detector.setItemText(1, _translate("Form", "Eiger4M", None))
-            self.Detector.setItemText(2, _translate("Form", "Eiger16M", None))
+            for i in range(len(Eiger_list)):
+                self.Detector.addItem(_fromUtf8(""))
+                self.Detector.setItemText(i, _translate("Form", Eiger_list[i], None))
+
         self.distance.setText(_translate("Form", "100", None))
         self.label_14.setText(_translate("Form", "Wavelength (A)", None))
         self.Wavelength.setText(_translate("Form", "1", None))
