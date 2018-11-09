@@ -35,7 +35,7 @@ def InitDetector(args):
     else:
         try:
             detector_name = args['detector']
-            detector = pyFAI.detectors.Detector.factory(detector_name)
+            detector = pyFAI.detector_factory(detector_name)
             detector.overload = GetOverload(detector_name)
             return detector
 
@@ -81,6 +81,7 @@ class Correction(object):
 
     def Mask(self):
         if self.args['mask'].lower() == 'none':
+            #This allows to have stripes of Pilatus/Eiger detector masked out automatically
             self.mask = -1 * (self.detector.mask - 1)
             return
         else:

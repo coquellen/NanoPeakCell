@@ -773,7 +773,7 @@ class XPView(NPGWidget):
     def getDetector(self,verbose=False):
         det = self.ui.Detector.currentText()
         try:
-            self.detector = pyFAI.detectors.Detector.factory(str(det))
+            self.detector = pyFAI.detector_factory(str(det))
         except:
             self.detector = get_class("NPC.Detectors", str(det))()
         self.psx = self.detector.pixel1
