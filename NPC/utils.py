@@ -113,7 +113,7 @@ def get_class(module_name,class_name):
 
 
 def get_filenames(options, fns=[]):
-        
+
         filename_root = options['filename_root']
         file_extension = options['file_extension']
         data_folder = options['data']
@@ -123,22 +123,30 @@ def get_filenames(options, fns=[]):
         if not fns: print('Looking for files that match your parameters... Please wait')
 
         #Remove master files from Eiger
-        if 'h5' in  file_extension:
-            pattern = os.path.join(data_folder,'%s*[!master]%s'%(filename_root,file_extension))
-        else:
-            pattern = os.path.join(data_folder,'%s*%s'%(filename_root,file_extension))
+        # if 'h5' in  file_extension:
+        #     pattern = os.path.join(data_folder,'%s*[!master]%s'%(filename_root,file_extension))
+        # else:
+        #     pattern = os.path.join(data_folder,'%s*%s'%(filename_root,file_extension))
+        #
+        # f = glob.glob(pattern)
+        for root, dirnames, filenames in os.walk(data_folder, followlinks=True):
+            if fns:
+                filenames = [x for x in filenames if os.path.join(root, x) not in fns]
 
-        f = glob.glob(pattern)
-
+            for filename in filenames:
+                if filename_root == None:
+                    if filename.endswith(file_extension): f.append(filename)
+                else:
+                    if filename.endswith(file_extension) and filename.startswith(filename_root) and 'master.h5' not in filename:
+                        f.append(os.path.join(root, filename))
         if fns:
             f = [x for x in f if x not in fns]
-
         if len(f) == 0 and not fns:
             if live:
                 print('\n= Job progression = Hit rate =')
                 return sorted(f)
             else:
-                print('Sorry, no file to be processed... Yet ?')
+                print('Sorry, no file to be processed... Yet ?\n Exiting...')
                 #return None
                 sys.exit(0)
 
