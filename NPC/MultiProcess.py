@@ -183,6 +183,7 @@ class MProcess(multiprocessing.Process):
             self.SubtractBkg = False
 
         self.mask = self.getMask()
+        print(np.where(self.mask))
         self.dark = self.getCorrection(self.options['dark'])
 
         self.data = np.zeros((self.roi.xmax-self.roi.xmin, self.roi.ymax-self.roi.ymin))
@@ -211,13 +212,17 @@ class MProcess(multiprocessing.Process):
         return data
 
     def CorrectDark(self, data, dark, roi):
-        xmin, xmax, ymin, ymax = roi
+        xmin, xmax, ymin, ymax = roi.tuple
         return data.astype(np.int32) - dark[xmin:xmax,ymin:ymax]
     
     def open(self,fn):
+        try:
+            fn, path = fn.split(':')
+        except:
+            path = 'data'
         if fn.endswith('.h5'):
             h5 = h5py.File(fn)
-            return h5['data'][:].astype(np.int32)
+            return h5[path][:].astype(np.int32)
         elif fn.endswith('.pickle'):
             return None
         else:

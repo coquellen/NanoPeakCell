@@ -50,6 +50,7 @@ def GetOverload(det):
     for key, value in OVL.iteritems():
         if key in det:
             return value
+    return None
 
 
 class Correction(object):
@@ -93,8 +94,14 @@ class Correction(object):
 
     def openDark(self):
         import h5py
-        h51 = h5py.File(self.args['dark'], 'r')
-        self.dark = h51['data'][:]
+        try:
+            darkFN, path = self.args['dark'].split(':')
+        except:
+            darkFN = self.args['dark']
+            path = 'data'
+
+        h51 = h5py.File(darkFN, 'r')
+        self.dark = h51[path][:]
         h51.close()
         if self.dark.shape != self.detector.shape:
             return False
@@ -102,8 +109,13 @@ class Correction(object):
 
     def openMask(self):
         import h5py
-        h51 = h5py.File(self.args['mask'], 'r')
-        self.mask = -1 * (h51['data'][:] - 1)
+        try:
+            maskFN, path = self.args['mask'].split(':')
+        except:
+            maskFN = self.args['mask']
+            path = 'data'
+        h51 = h5py.File(maskFN, 'r')
+        self.mask = -1 * (h51[path][:] - 1)
         h51.close()
         if self.mask.shape != self.detector.shape:
             return False
