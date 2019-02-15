@@ -4,6 +4,7 @@ if op_sys == 'Darwin':
     from Foundation import NSURL
 from PyQt4 import QtCore, QtGui
 from NPC.gui.ui.npg_ROI_ui import Ui_ROI
+from NPC.gui.ui.npg_int_ui import Ui_Intensities
 import pyqtgraph as pg
 from scipy.ndimage.filters import gaussian_filter
 import numpy as np
@@ -15,6 +16,15 @@ class ShowROI(QtGui.QWidget):
         QtGui.QWidget.__init__(self)
         self.ui = Ui_ROI()
         self.ui.setupUi(self)
+
+class ShowNumbers(QtGui.QWidget):
+    def __init__(self):
+        QtGui.QWidget.__init__(self)
+        self.ui = Ui_Intensities()
+        self.ui.setupUi(self)
+
+
+
 
 class CustomViewBox(pg.ViewBox):
     def __init__(self, parent = None, *args, **kwds):

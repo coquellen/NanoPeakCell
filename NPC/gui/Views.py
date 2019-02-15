@@ -2,7 +2,7 @@ import numpy as np, h5py
 import pyFAI
 import pyqtgraph as pg
 import zmq
-from NPC.gui.NPC_Widgets import CustomViewBox
+from NPC.gui.NPC_Widgets import CustomViewBox, ShowNumbers
 from NPC.utils import get_class, parseHits
 from PyQt4.QtCore import pyqtSignal
 from PyQt4.QtGui import QMainWindow, QWidget, QIcon, QColor, QFileDialog, QCloseEvent
@@ -17,6 +17,7 @@ from datetime import datetime
 
 
 pg.setConfigOptions(imageAxisOrder='row-major')
+
 colorHoverMapping = [(255, 255, 0),
                      (255, 255, 0),
                      (0, 0, 255),
@@ -403,6 +404,7 @@ class ImageView(QMainWindow):
         self.vmin = 0
         self.vmax = 10
         self.showBragg = False
+        self.popup_int = ShowNumbers()
         self.show()
         self.raise_()
 
@@ -424,7 +426,6 @@ class ImageView(QMainWindow):
         self.XPView.ui.Detector.currentIndexChanged.connect(self.setDetector)
 
         self.proxy = pg.SignalProxy(self.view.scene().sigMouseMoved, rateLimit=30, slot=self.mouseMoved)
-
 
     def setAttr(self):
         try:
@@ -514,25 +515,25 @@ class ImageView(QMainWindow):
         except:
             return 'nan'
 
-    def getIntensities(self, ev):
-        if ev.button() == QtCore.Qt.MidButton and self.view.sceneBoundingRect().contains(ev.pos()):
-            x = self.cursorx
-            y = self.cursory
-            try:
+    def mousePressEvent(self, QMouseEvent):
+        if QMouseEvent.button() == QtCore.Qt.MidButton and self.view.sceneBoundingRect().contains(QMouseEvent.pos()):
+                x = self.cursorx
+                y = self.cursory
+            #try:
                 xmax, ymax = self.data.shape
                 if self.cursorx > 0 and self.cursory > 0 and self.cursorx < xmax and self.cursory < ymax:
-                    data = self.data[x - 10:x + 9, y - 10:y + 9].T
+                    data = self.data[y - 10:y + 9, x - 10:x + 9]
                     s = ''
                     for i in range(0, 19):
-                        s = s + '\n' + ''.join(['%6i' % member for member in data[-(i + 1), :]])
+                      s = s + '\n' + ''.join(['%6i' % member for member in data[i, :]])
                     self.popup_int.ui.textEdit.setText("%s" % s)
                     if not self.popup_int.isVisible(): self.popup_int.show()
                     self.popup_int.setWindowState(
                         self.popup_int.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
                     # this will activate the window
                     self.popup_int.activateWindow()
-            except AttributeError:
-                print('No data loaded yet')
+            #except AttributeError:
+                #print('No data loaded yet')
 
     def updateBoost(self):
         #try:
