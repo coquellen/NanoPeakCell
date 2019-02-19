@@ -6,7 +6,10 @@
 #
 # WARNING! All changes made in this file will be lost!
 
-from PyQt4 import QtCore, QtGui
+try:
+    from PyQt5 import QtCore, QtGui
+except:
+    from PyQt4 import QtCore, QtGui
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -45,7 +48,7 @@ class Ui_Form(object):
         self.layoutWidget.setGeometry(QtCore.QRect(20, 31, 243, 179))
         self.layoutWidget.setObjectName(_fromUtf8("layoutWidget"))
         self.gridLayout_4 = QtGui.QGridLayout(self.layoutWidget)
-        self.gridLayout_4.setMargin(0)
+        #self.gridLayout_4.setMargin(0)
         self.gridLayout_4.setObjectName(_fromUtf8("gridLayout_4"))
         self.label_3 = QtGui.QLabel(self.layoutWidget)
         self.label_3.setMinimumSize(QtCore.QSize(150, 0))

@@ -18,7 +18,10 @@ otherDet_list = ['CSPAD', 'MPCCD', 'AgipD', 'RayonixMx225hs']
 
 det_list = Pilatus_list + Eiger_list + otherDet_list
 
-from PyQt4 import QtCore, QtGui
+try:
+    from PyQt5 import QtCore, QtGui
+except:
+    from PyQt4 import QtCore, QtGui
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -59,7 +62,7 @@ class Ui_Form(object):
         self.widget.setObjectName(_fromUtf8("widget"))
         self.formLayout = QtGui.QFormLayout(self.widget)
         self.formLayout.setLabelAlignment(QtCore.Qt.AlignLeading|QtCore.Qt.AlignLeft|QtCore.Qt.AlignVCenter)
-        self.formLayout.setMargin(0)
+        #self.formLayout.setMargin(0)
         self.formLayout.setObjectName(_fromUtf8("formLayout"))
         self.horizontalLayout = QtGui.QHBoxLayout()
         self.horizontalLayout.setObjectName(_fromUtf8("horizontalLayout"))

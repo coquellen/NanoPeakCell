@@ -5,9 +5,10 @@
 # Created by: PyQt4 UI code generator 4.12
 #
 # WARNING! All changes made in this file will be lost!
-
-from PyQt4 import QtCore, QtGui
-
+try:
+    from PyQt5 import QtCore, QtGui
+except:
+    from PyQt4 import QtCore, QtGui
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
 except AttributeError:
@@ -23,6 +24,7 @@ except AttributeError:
         return QtGui.QApplication.translate(context, text, disambig)
 
 class Ui_Form(object):
+
     def setupUi(self, Form):
         Form.setObjectName(_fromUtf8("Form"))
         Form.resize(394, 778)

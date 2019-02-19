@@ -1,7 +1,11 @@
 import h5py
 import os
 import glob
-from PyQt4 import QtGui
+try:
+    from PyQt5 import QtGui
+except:
+    from PyQt4 import QtGui
+
 try:
     import cPickle
 except ImportError:

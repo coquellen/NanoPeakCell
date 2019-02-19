@@ -5,7 +5,10 @@ try:
 except:
     import _pickle as cPickle
 import os
-from PyQt4.QtCore import  pyqtSignal, QObject
+try:
+    from PyQt5.QtCore import pyqtSignal, QObject
+except:
+    from PyQt4.QtCore import  pyqtSignal, QObject
 
 import numpy as np
 from NPC.gui.geom import reconstruct, parse_geom_file_quadrants, parse_geom_file, getGeomTransformations

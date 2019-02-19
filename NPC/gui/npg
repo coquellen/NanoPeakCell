@@ -1,5 +1,10 @@
 #!/usr/bin/env python
-from PyQt4 import QtGui, QtCore
+try:
+    from PyQt5 import QtGui, QtCore
+    from PyQt5.QtCore import pyqtSignal
+except:
+    from PyQt4 import QtGui, QtCore
+    from PyQt4.QtCore import pyqtSignal
 
 import os
 from NPC.gui.Views import ImageView, XPView, TreeFileView, HitFindingView, TableWidget
@@ -9,7 +14,6 @@ from NPC.gui.Stream import CrystFELStream as CStream
 from NPC import utils
 import json
 from NPC.PreProcessing import DataProcessingMultiprocessing as DataProc
-from PyQt4.QtCore import pyqtSignal
 import shutil
 import glob
 
@@ -278,7 +282,7 @@ class NPGController(object):
             #print res[:,0]
             #print res[:,1]
             self.ImageView.showBragg = True
-            self.ImageView.view.IntegratedPlot.setData(res[:,1] / self.binning, res[:,0] / self.binning)
+            self.ImageView.view.IntegratedPlot.setData(res[:,0] / self.binning, res[:,1] / self.binning)
 
     def startNPC(self):
         #print(self.XPView.getDetector())

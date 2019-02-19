@@ -6,7 +6,10 @@
 #
 # WARNING! All changes made in this file will be lost!
 
-from PyQt4 import QtCore, QtGui
+try:
+    from PyQt5 import QtCore, QtGui
+except:
+    from PyQt4 import QtCore, QtGui
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -71,7 +74,7 @@ class Ui_MainWindow(object):
         self.layoutWidget.setGeometry(QtCore.QRect(10, 30, 209, 151))
         self.layoutWidget.setObjectName(_fromUtf8("layoutWidget"))
         self.verticalLayout = QtGui.QVBoxLayout(self.layoutWidget)
-        self.verticalLayout.setMargin(0)
+        #self.verticalLayout.setMargin(0)
         self.verticalLayout.setObjectName(_fromUtf8("verticalLayout"))
         self.gridLayout = QtGui.QGridLayout()
         self.gridLayout.setObjectName(_fromUtf8("gridLayout"))
@@ -132,7 +135,7 @@ class Ui_MainWindow(object):
         self.layoutWidget_2.setGeometry(QtCore.QRect(10, 30, 269, 174))
         self.layoutWidget_2.setObjectName(_fromUtf8("layoutWidget_2"))
         self.verticalLayout_3 = QtGui.QVBoxLayout(self.layoutWidget_2)
-        self.verticalLayout_3.setMargin(0)
+        #self.verticalLayout_3.setMargin(0)
         self.verticalLayout_3.setObjectName(_fromUtf8("verticalLayout_3"))
         self.label = QtGui.QLabel(self.layoutWidget_2)
         self.label.setObjectName(_fromUtf8("label"))

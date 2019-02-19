@@ -4,13 +4,20 @@ import pyqtgraph as pg
 import zmq
 from NPC.gui.NPC_Widgets import CustomViewBox, ShowNumbers
 from NPC.utils import get_class, parseHits
-from PyQt4.QtCore import pyqtSignal
-from PyQt4.QtGui import QMainWindow, QWidget, QIcon, QColor, QFileDialog, QCloseEvent
 from pyqtgraph import functions as fn
 from pyqtgraph.graphicsItems.ROI import Handle as pgHandle
 from NPC.gui.Frame import TreeFactory
 from NPC.gui.ui import MainWindow_NoMenu_ui as MainWindow_ui, FileTree_ui, XP_Params_ui, HitFinding_ui, LiveHF, Runs_ui, Geom_ui
-from PyQt4 import QtGui, QtCore
+
+try:
+    from PyQt5 import QtGui, QtCore
+    from PyQt5.QtCore import pyqtSignal
+    from PyQt5.QtGui import QMainWindow, QWidget, QIcon, QColor, QFileDialog, QCloseEvent
+except:
+    from PyQt4 import QtGui, QtCore
+    from PyQt4.QtCore import pyqtSignal
+    from PyQt4.QtGui import QMainWindow, QWidget, QIcon, QColor, QFileDialog, QCloseEvent
+
 import os, json, time
 import pkg_resources as pkg
 from datetime import datetime
@@ -832,6 +839,9 @@ class TreeFileView(NPGWidget):
 
     openFile = pyqtSignal(tuple)
     name = 'TreeFileView'
+    #dropped = QtCore.pyqtSignal(list)
+
+
 
     def __init__(self, parent=None):
         super(TreeFileView, self).__init__(name=self.name)
@@ -845,10 +855,11 @@ class TreeFileView(NPGWidget):
         self.playtimer.timeout.connect(self.updateData)
         self.showIndexed = False
 
-        self.connect(self.ui.treeWidget, QtCore.SIGNAL("dropped"), self.objectDropped)
+        self.ui.treeWidget.dropped.connect(self.objectDropped)
         self.ui.treeWidget.itemSelectionChanged.connect(self.updateTree)
 
     def objectDropped(self, l):
+        print l, type(l)
         for url in l:
             if os.path.exists(url):
                 self.treeFactory.append_object(url)
@@ -895,6 +906,11 @@ class TreeFileView(NPGWidget):
                 self.openFile.emit((str(fn), path, int(index)))
             except ValueError:
                 return
+
+    #def dropEvent(self, event):
+    #    print event.mimeData().text()
+        #self.dropped.emit(list_of_files)
+
 
     def play(self):
         self.idx = 0

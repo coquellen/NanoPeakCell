@@ -2,13 +2,19 @@ import platform
 op_sys = platform.system()
 if op_sys == 'Darwin':
     from Foundation import NSURL
-from PyQt4 import QtCore, QtGui
+
+try:
+    from PyQt5 import QtCore, QtGui
+    from PyQt5.QtCore import QPointF as PointF
+except:
+    from PyQt4 import QtCore, QtGui
+    from PyQt4.QtCore import QPointF as PointF
+
 from NPC.gui.ui.npg_ROI_ui import Ui_ROI
 from NPC.gui.ui.npg_int_ui import Ui_Intensities
 import pyqtgraph as pg
 from scipy.ndimage.filters import gaussian_filter
 import numpy as np
-from PyQt4.QtCore import QPointF as PointF
 
 
 class ShowROI(QtGui.QWidget):
@@ -214,6 +220,9 @@ class CustomViewBox(pg.ViewBox):
 
 
 class TestListView(QtGui.QTreeWidget):
+
+    dropped = QtCore.pyqtSignal(list)
+
     def __init__(self, parent=None):
         QtGui.QTreeWidget.__init__(self, parent)
         self.setAcceptDrops(True)
@@ -246,7 +255,9 @@ class TestListView(QtGui.QTreeWidget):
                     fname = str(url.toLocalFile())
 
                 links.append(fname)
-            self.emit(QtCore.SIGNAL("dropped"), links)
+            print("Links: ")
+            print(links)
+            self.dropped.emit(links)
 
         else:
             event.ignore()

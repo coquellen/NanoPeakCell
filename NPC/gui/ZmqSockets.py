@@ -1,6 +1,10 @@
 import zmq
 import datetime, time
-from PyQt4.QtCore import QTimer
+try:
+    from PyQt5.QtCore import QTimer
+except:
+    from PyQt4.QtCore import QTimer
+
 import lz4
 import bitshuffle
 import numpy as np

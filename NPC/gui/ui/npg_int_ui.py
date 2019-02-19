@@ -10,7 +10,10 @@
 #try:
 # from PyQt5 import QtCore, QtGui
 #except:
-from PyQt4 import QtCore, QtGui
+try:
+    from PyQt5 import QtCore, QtGui
+except:
+    from PyQt4 import QtCore, QtGui
 
 
 try:

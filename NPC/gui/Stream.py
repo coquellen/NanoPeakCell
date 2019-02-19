@@ -6,7 +6,12 @@ sys.path.insert(0, '../gui/')
 #sys.path.insert(0, '../gui/')
 from geom import parse_geom_file, reconstruct, getGeomTransformations
 from NPC import utils
-from PyQt4.QtCore import QThread, QObject, pyqtSignal
+try:
+    from PyQt5.QtCore import QThread, QObject, pyqtSignal
+except:
+    from PyQt4.QtCore import QThread, QObject, pyqtSignal
+
+
 def parse_stream(streamfile):
         append = 0
         crystal = 0
