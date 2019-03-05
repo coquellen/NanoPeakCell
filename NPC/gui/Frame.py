@@ -1,6 +1,7 @@
 import h5py
 import os
 import glob
+
 try:
     from PyQt5 import QtGui
 except:
@@ -58,7 +59,6 @@ class TreeFactory(object):
             # Out[22]: 'Dectris Eiger 4M'
             # h5['/entry/instrument/detector/beam_center_x'][()]
             # h5['/entry/instrument/detector/detector_distance'][()] (meter)
-            # TODO: Remove paths from tree name - Done
             # TODO:
             self.buildTree(files)
 
@@ -120,45 +120,48 @@ class TreeFactory(object):
 
     def construct_tree_h5(self, fn, item):
         self.filename = self.filenames_dic[fn]
-        with h5py.File(self.filename, 'r') as h5:
-            self.visitor_func(h5)
-        if self.hits is None:
-            if len(self.h5_dic[self.filename]) == 1:
-                path, shape = self.h5_dic[self.filename][0]
-                if shape[0] == 1:
-                    item.setText(1,"1")
-                    #print path, shape, self.filename
-                    #Here emit a signal to display the file
-                else:
-                    item.setText(1, str(shape[0]))
-                    for i in range(shape[0]):
-                        item1 = QtGui.QTreeWidgetItem(item)
-                        item1.setText(0, '%s %8i'%(path,i))
-            else:
-                count = 0
-                for dataset in self.h5_dic[self.filename]:
-                    path, shape = dataset
-                    item1 = QtGui.QTreeWidgetItem(item)
-                    item1.setText(0, path)
+        if os.path.isfile(self.filename):
+            with h5py.File(self.filename, 'r') as h5:
+                self.visitor_func(h5)
+            if self.hits is None:
+                if len(self.h5_dic[self.filename]) == 1:
+                    path, shape = self.h5_dic[self.filename][0]
                     if shape[0] == 1:
-                        item1.setText(1,  "1")
+                        item.setText(1,"1")
+                        #print path, shape, self.filename
+                        #Here emit a signal to display the file
                     else:
-                        item1.setText(1, str(shape[0]))
-                        for i in range(min(100,shape[0])):
-                            item2 = QtGui.QTreeWidgetItem(item1)
-                            item2.setText(0, '%s %8i' % (path,i))
-                        count += shape[0]
-                    item.setText(1, str(count))
-        else:
-            hits = self.hits[self.filename]
-            if isinstance(hits, int):
-                item.setText(1, "1")
+                        item.setText(1, str(shape[0]))
+                        for i in range(shape[0]):
+                            item1 = QtGui.QTreeWidgetItem(item)
+                            item1.setText(0, '%s %8i'%(path,i))
+                else:
+                    count = 0
+                    for dataset in self.h5_dic[self.filename]:
+                        path, shape = dataset
+                        item1 = QtGui.QTreeWidgetItem(item)
+                        item1.setText(0, path)
+                        if shape[0] == 1:
+                            item1.setText(1,  "1")
+                        else:
+                            item1.setText(1, str(shape[0]))
+                            for i in range(min(100,shape[0])):
+                                item2 = QtGui.QTreeWidgetItem(item1)
+                                item2.setText(0, '%s %8i' % (path,i))
+                            count += shape[0]
+                        item.setText(1, str(count))
             else:
-                path, shape = self.h5_dic[self.filename][0]
-                for hit in hits:
-                    item1 = QtGui.QTreeWidgetItem(item)
-                    item1.setText(0, "%s %8s"%(path,hit))
-                item.setText(1,str(len(hits)))
+                hits = self.hits[self.filename]
+                if isinstance(hits, int):
+                    item.setText(1, "1")
+                else:
+                    path, shape = self.h5_dic[self.filename][0]
+                    for hit in hits:
+                        item1 = QtGui.QTreeWidgetItem(item)
+                        item1.setText(0, "%s %8s"%(path,hit))
+                    item.setText(1,str(len(hits)))
+        else:
+            item.setText(1,"Error - No file")
 
     def visitor_func(self, h5):
             for key in h5.keys():

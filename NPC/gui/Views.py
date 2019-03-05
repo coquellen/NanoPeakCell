@@ -797,6 +797,20 @@ class XPView(NPGWidget):
         else:
             self.close()
 
+    def readHeader(self, header):
+        #print("This is it")
+        from .Headers import readheader
+        try:
+            self.distance, self.psx, self.psy, self.wl, self.bx, self.by, det = readheader(header)
+            self.detector = pyFAI.detector_factory(str(det))
+            self.ui.beamX.setText(str(self.bx))
+            self.ui.beamY.setText(str(self.by))
+            self.ui.distance.setText((str(self.distance)))
+            self.ui.Wavelength.setText(str(self.wl))
+            index = self.ui.Detector.findText(det)
+            self.ui.Detector.setCurrentIndex(index)
+        except:
+            pass
 
 class CsPADGeom(NPGWidget):
 
@@ -859,7 +873,7 @@ class TreeFileView(NPGWidget):
         self.ui.treeWidget.itemSelectionChanged.connect(self.updateTree)
 
     def objectDropped(self, l):
-        print l, type(l)
+        #print l, type(l)
         for url in l:
             if os.path.exists(url):
                 self.treeFactory.append_object(url)
@@ -868,9 +882,9 @@ class TreeFileView(NPGWidget):
         self.treeItem = self.ui.treeWidget.currentItem()
         # N is the number of images containes in a file
         N = str(self.treeItem.text(1))
-
         # 'tba' is used to avoid visiting all h5 during tree construction
         if N == 'tba':
+
             self.treeFactory.construct_tree_h5(str(self.treeItem.text(0)), self.treeItem)
             if str(self.treeItem.text(1)) == '1':
                 self.updateFilename()

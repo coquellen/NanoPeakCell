@@ -64,7 +64,6 @@ class OpenImage(object):
         self.h5Filename = None
 
     def openFrame(self, args):
-        print(args)
         try:
             fn, path, index = args[0]
         except ValueError:
@@ -83,14 +82,20 @@ class OpenImage(object):
             if self.h5 is not None: self.h5.close()
             self.h5 = h5py.File(fn)
         if index is None:
-            return self.h5[path][:].astype(np.int32)
+            if len(self.h5[path].shape) == 3:
+                #print("Called")
+                #print(self.h5[path][0,::].astype(np.int32))
+                return self.h5[path][0,::].astype(np.int32), None
+            else:
+                return self.h5[path][:].astype(np.int32), None
         else:
-            return self.h5[path][index, ::].astype(np.int32)
+            return self.h5[path][index, ::].astype(np.int32), None
 
     def openImg(self, fn):
         img = fabio.open(fn)
         self.header = img.header
-        return img.data
+
+        return img.data, dict(img.header)
 
     def openPickle(self, fn):
         img = load_pickle(self.fn)
@@ -100,7 +105,7 @@ class OpenImage(object):
         # mask = np.where(data > 0, 0, 1)
         # s = ndimage.generate_binary_structure(2, 1)
         # self.dset = data*np.logical_not(ndimage.binary_dilation(mask, structure =s ))
-        self.data = img['DATA'].as_numpy_array()
+        return img['DATA'].as_numpy_array(), None
 
     def shutDown(self):
         if self.h5 is not None:
@@ -112,6 +117,7 @@ class OpenImage(object):
 class NPGData(QObject):
 
     updateImageView = pyqtSignal(np.ndarray)
+    updateXParams = pyqtSignal(dict)
     #dataReceived = pyqtSignal(tuple)
     binning = 2
 
@@ -131,9 +137,12 @@ class NPGData(QObject):
         #self.socketTimer.timeout.connect(self.receiveMSG)
 
     def updateData(self, *args):
-        self.data = self.IO.openFrame(args)
+        data  = self.IO.openFrame(args)
+        self.data, self.header = self.IO.openFrame(args)
         self.applyCorrection()
         self.updateImageView.emit(self.data)
+        if self.header is not None:
+            self.updateXParams.emit(self.header)
 
     def updateMask(self, fn):
         ext = os.path.splitext(str(fn))[1]

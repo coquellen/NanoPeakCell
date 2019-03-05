@@ -10,7 +10,7 @@ import os
 from NPC.gui.Views import ImageView, XPView, TreeFileView, HitFindingView, TableWidget
 from NPC.gui.Models import NPGData
 import inspect
-from NPC.gui.Stream import CrystFELStream as CStream
+from NPC.gui.Stream import CrystFELStreamLight as CStream
 from NPC import utils
 import json
 from NPC.PreProcessing import DataProcessingMultiprocessing as DataProc
@@ -145,6 +145,9 @@ class NPGController(object):
 
         self.currentMode = "OffImage"
         self.cwd = os.getcwd()
+        self.streamwd = self.cwd
+        self.geomwd = self.cwd
+        self.maskwd = self.cwd
 
         # The dealing of NPC jobs should be done in a different object
         self.nRun = 1
@@ -179,6 +182,7 @@ class NPGController(object):
 
         #Binding with ImgModel
         self.ImgModel.updateImageView.connect(self.ImageView.setImg)
+        self.ImgModel.updateXParams.connect(self.XPView.readHeader)
         self.ImageView.ui.radioButton1.toggled.connect(self.onToggled)
         self.ImageView.ui.radioButton2.toggled.connect(self.onToggled)
 
@@ -222,11 +226,6 @@ class NPGController(object):
                           '&Display Images': 'OffImage',
                           '&Listen a port': 'OnPort'}
 
-        #self.XPView.raiseAll.connect(self.raiseAll)
-        #self.ImageView.raiseAll.connect(self.raiseAll)
-        #self.TreeFileView.raiseAll.connect(self.raiseAll)
-        #self.Table.raiseAll.connect(self.raiseAll)
-        #self.HitFindingView.raiseAll.connect(self.raiseAll)
         self.views = [self.ImageView, self.XPView, self.Table, self.HitFindingView, self.TreeFileView]
 
         for cnt, item in enumerate(QActionModes):
@@ -238,6 +237,8 @@ class NPGController(object):
                 self.TreeFileView.treeFactory.append_object(txt)
             else:
                 self.TreeFileView.treeFactory.append_file(txt)
+
+
 
     def raiseAll(self, s):
         for view in self.views:
@@ -399,7 +400,7 @@ class NPGController(object):
             options = json.loads(open(json_file).read())
             root = options['filename_root']
             txt = os.path.join(path, 'NPC_run%s' % run, '%s_%s.txt' % (root, run))
-            self.TreeFileView.treeFactory.append_file(txt)#run_hits(txt)
+            self.TreeFileView.treeFactory.append_file(txt)
             self.TreeFileView.setVisible(True)
         except IOError:
             print("Sorry, cannot load Results from ...")
@@ -418,10 +419,10 @@ class NPGController(object):
             self.TreeFileView.treeFactory.run(str(path))
 
     def loadStream(self):
-        self.streamFile = str(self.getFile())
+        self.streamFile = str(self.getFile(path=self.streamwd))
         if self.streamFile:
-            self.cwd = os.path.split(self.streamFile)[0]
-            os.chdir(self.cwd)
+            self.streamwd = os.path.split(self.streamFile)[0]
+            os.chdir(self.streamwd)
             self.parseStream(self.streamFile)
 
     def parseStream(self, streamfn):
@@ -445,7 +446,8 @@ class NPGController(object):
         self.ImageView.ui.radioButton1.setDisabled(False)
         self.ImageView.ui.radioButton2.setDisabled(False)
         self.TreeFileView.ui.LoadResultsBut.setDisabled(False)
-        self.ImageView.ui.Nfiles.setText("%s frames, %s crystals" % (len(self.stream.filenames), len(self.stream.indexed)))
+        ncrystals = self.stream.fns_dict[-1]["Ncrystal"]
+        self.ImageView.ui.Nfiles.setText("%s frames, %s crystals" % (len(self.stream.fns_dict), ncrystals))
 
     def infoStream(self, info):
         nimages, ncrystals = info
@@ -481,7 +483,7 @@ class NPGController(object):
 
     def openMask(self,openfn=True):
         if openfn :
-            self.maskFile = str(self.getFile())
+            self.maskFile = str(self.getFile(path=self.maskwd))
         if self.maskFile:
             self.ImgModel.updateMask(self.maskFile)
             dim1, dim2 = self.ImgModel.mask.shape
@@ -491,22 +493,24 @@ class NPGController(object):
 
     def openGeometry(self, openfn=True):
         if openfn:
-            self.geomFile = str(self.getFile())
+            self.geomFile = str(self.getFile(path=self.geomwd))
         if self.geomFile:
             self.ImageView.ui.Geom.setText("Current Geometry File:  %s" % self.geomFile)
             self.ImgModel.updateGeom(self.geomFile)
 
-    def getFile(self, var=None):
-        print("Called")
-        d = QtGui.QFileDialog.getOpenFileName(
+    def getFile(self, var=None, path=None):
+        if path is None:
+            path = self.cwd
+
+        fn, _ = QtGui.QFileDialog.getOpenFileName(
                 None,
                 "Select a File",
-                self.cwd
+                path
         )
-        #print d
+
         if var is not None:
             var.setText(d[0])
-        return d
+        return fn
 
     def deleteMask(self):
         self.maskFile = ""

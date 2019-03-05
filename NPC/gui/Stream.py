@@ -166,6 +166,90 @@ def parse_stream(streamfile):
 
         return header, frames, geom, all_reflections
 
+class CrystFELStreamLight(QObject):
+
+    update = pyqtSignal(list)
+    sendGEOM = pyqtSignal(str)
+    finished = pyqtSignal()
+    info = pyqtSignal(tuple)
+
+    fns_dict = []
+
+
+    def __init__(self, streamfile, mainThread):
+        super(CrystFELStreamLight, self).__init__()
+        self.streamfile = streamfile
+        self.mainThread = mainThread
+
+    def parse_stream(self):
+        count_shots = 0
+        count_crystals = 0
+        self.header = ''
+        #geom = Geom()
+        #self.stream =
+        head_check = 0
+        GEOM_FLAG = 0
+        self.geom = ''
+        self.filenames = []
+        self.indexed = []
+        emit = 0
+        prt = 0
+        self.offset = 0
+
+        with open(self.streamfile,'r',8192) as self.stream:
+          for line in self.stream:
+            if head_check == 0:
+
+                self.header += line
+                if '----- Begin geometry file -----' in line: GEOM_FLAG = 1
+                if GEOM_FLAG: self.geom += line
+                if '----- End geometry file -----' in line:
+                    GEOM_FLAG = 0
+                    self.sendGEOM.emit(self.geom)
+
+
+                ### Get beginning of an image
+            if 'Begin chunk' in line:
+                count_shots += 1
+                head_check = 1
+                prt=0
+                offsets = {}
+                offsets['BeginChunk'] = self.offset
+
+            elif 'Image filename' in line:
+                fn = line.split()[2].strip()
+                offsets['fn'] = fn
+                self.filenames.append(fn)
+
+            elif 'End chunk' in line:
+                offsets['EndChunk'] = self.offset
+                prt=1
+                self.fns_dict.append(offsets)
+
+            elif 'Begin crystal' in line:
+                count_crystals += 1
+                offsets['Ncrystal'] = count_crystals
+                offsets['crystal'] = 1
+                self.indexed.append(fn)
+
+
+            self.offset += len(line)
+
+            if count_shots % 500 == 0 and count_shots > 0 and prt == 1:
+                prt = 0
+                print('%7i frames parsed, %7i crystals found\r' % (count_shots, count_crystals)),
+                if emit == 0:
+                    self.update.emit([self.filenames, self.indexed])
+                emit += 1
+                if emit % 4 == 0:
+                    self.info.emit((count_shots, count_crystals))
+            sys.stdout.flush()
+        print('%7i frames parsed, %7i crystals found' % (count_shots, count_crystals))
+        self.stream = open(self.streamfile, 'r', 8192)
+        self.info.emit((count_shots, count_crystals))
+        self.moveToThread(self.mainThread)
+        self.finished.emit()
+
 
 class CrystFELStream(QObject):
 
@@ -313,10 +397,11 @@ class CrystFELStream(QObject):
             if '  fs/px   ss/px (1/d)/nm^-1   Intensity' in line:
                 PEAKS = 1
 
-            if count_shots % 500 == 0 and count_shots > 0 and prt == 1:
+            if count_shots % 500 == 0 and count_shots > 500 and prt == 1:
                 prt = 0
                 print('%7i frames parsed, %7i crystals found' % (count_shots, count_crystals))
                 if emit == 0:
+
                     self.update.emit([self.filenames, self.indexed])
                 emit += 1
                 if emit % 4 == 0:
@@ -615,64 +700,66 @@ class Geom(object):
         #print self.bins
 
 if __name__ == "__main__":
+    s = CrystFELStreamLight('/Users/coquelleni/IBS/RADDAM_RT/IceRemoval/2ms_clean.stream', None)
 
+    s.parse_stream()
     #s=Stream('iris_nobkgsub_zaef_rings_nocen.stream')
-    s = Stream('dev/C_RS_clean.stream')
-    geom_params = parse_geom_file(s.geom, openfn=False)
-    import h5py
-    data = h5py.File('dev/HDF5/HDF5_cxip12715_r0051_016/cxip12715_51_1499479169_79177848.h5')['data'][:]
+    #s = Stream('dev/C_RS_clean.stream')
+    #geom_params = parse_geom_file(s.geom, openfn=False)
+    #import h5py
+    #data = h5py.File('dev/HDF5/HDF5_cxip12715_r0051_016/cxip12715_51_1499479169_79177848.h5')['data'][:]
 
 
 
-    DetTransfo = getGeomTransformations(geom_params[0])
-    idx = 0
-    size = geom_params[0][geom_params[0].keys()[0]]
-    ss = int(size[1]) - int(size[0]) + 1
-    fs = int(size[3]) - int(size[2]) + 1
+    #DetTransfo = getGeomTransformations(geom_params[0])
+    #idx = 0
+    #size = geom_params[0][geom_params[0].keys()[0]]
+    #ss = int(size[1]) - int(size[0]) + 1
+    #fs = int(size[3]) - int(size[2]) + 1
 
-    peaks = s.frames[idx].peaks
-    from scipy.ndimage.interpolation import rotate
-    from matplotlib.patches import Circle
-
-    panels = [item[-1] for item in peaks]
-    patches = []
-
-    for panel in geom_params[0].keys():
-
-        idx = [i for i in range(len(panels)) if panels[i] == panel]
-        if len(idx) > 0:
-
-            alpha, xmin, xmax, ymin, ymax, deltaY, deltaX = DetTransfo[panel]
-
-            print("Panel %s: coordinates should be comprised between:\n" \
-                  "xmin = %5i and xmax = %5i \n" \
-                  "ymin = %5i and xmax = %5i "%(panel, xmin, xmax, ymin, ymax))
-            shiftX = int(geom_params[0][panel][1])
-            shiftY = int(geom_params[0][panel][3])
-
-            X = np.array([shiftX - ss/2. - float(peaks[i][0]) for i in idx])
-            Y = np.array([shiftY - fs/2. - float(peaks[i][1]) for i in idx])
-            theta = np.radians(alpha)
-            c, s = np.cos(theta), np.sin(theta)
-            X1 = X * c - Y * s
-            Y1 = X * s + Y * c
-
-            for index, x in np.ndenumerate(X1):
-                x1 = Y1[index] + xmin
-                y1 = X1[index] + ymin
-                circle = Circle((x1, y1), 0.1)
-                patches.append(circle)
-                print(Y1[index] + xmin, X1[index] + ymin)
-
-
-    from matplotlib import pyplot as plt
-    from matplotlib.collections import PatchCollection
-    fig, ax = plt.subplots()
-    p = PatchCollection(patches, alpha=0.4)
-    colors = 100*np.random.rand(len(patches))
-    ax.add_collection(p)
-    p.set_array(np.array(colors))
-    plt.show()
+    #peaks = s.frames[idx].peaks
+    # from scipy.ndimage.interpolation import rotate
+    # from matplotlib.patches import Circle
+    #
+    # panels = [item[-1] for item in peaks]
+    # patches = []
+    #
+    # for panel in geom_params[0].keys():
+    #
+    #     idx = [i for i in range(len(panels)) if panels[i] == panel]
+    #     if len(idx) > 0:
+    #
+    #         alpha, xmin, xmax, ymin, ymax, deltaY, deltaX = DetTransfo[panel]
+    #
+    #         print("Panel %s: coordinates should be comprised between:\n" \
+    #               "xmin = %5i and xmax = %5i \n" \
+    #               "ymin = %5i and xmax = %5i "%(panel, xmin, xmax, ymin, ymax))
+    #         shiftX = int(geom_params[0][panel][1])
+    #         shiftY = int(geom_params[0][panel][3])
+    #
+    #         X = np.array([shiftX - ss/2. - float(peaks[i][0]) for i in idx])
+    #         Y = np.array([shiftY - fs/2. - float(peaks[i][1]) for i in idx])
+    #         theta = np.radians(alpha)
+    #         c, s = np.cos(theta), np.sin(theta)
+    #         X1 = X * c - Y * s
+    #         Y1 = X * s + Y * c
+    #
+    #         for index, x in np.ndenumerate(X1):
+    #             x1 = Y1[index] + xmin
+    #             y1 = X1[index] + ymin
+    #             circle = Circle((x1, y1), 0.1)
+    #             patches.append(circle)
+    #             print(Y1[index] + xmin, X1[index] + ymin)
+    #
+    #
+    # from matplotlib import pyplot as plt
+    # from matplotlib.collections import PatchCollection
+    # fig, ax = plt.subplots()
+    # p = PatchCollection(patches, alpha=0.4)
+    # colors = 100*np.random.rand(len(patches))
+    # ax.add_collection(p)
+    # p.set_array(np.array(colors))
+    # plt.show()
 
 
 

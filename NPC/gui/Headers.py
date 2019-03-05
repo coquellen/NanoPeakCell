@@ -1,17 +1,17 @@
 import os,numpy as np
 
-def readheader(header,filename):
-    fname ,fileExtension=os.path.splitext(filename)
-    if fileExtension == '.mar3450':
-       bx = header['CENTER_X']
-       by = header['CENTER_Y']
-       wl = header['WAVELENGTH']
-       psx= header['PIXEL_LENGTH']
-       psy= header['PIXEL_HEIGHT']
-       distance = header['DISTANCE']
-       return distance, psx, psy, wl, bx, by
+def readheader(header):#,filename):
+    #fname ,fileExtension=os.path.splitext(filename)
+    #if fileExtension == '.mar3450':
+    #   bx = header['CENTER_X']
+    #   by = header['CENTER_Y']
+    #   wl = header['WAVELENGTH']
+    #   psx= header['PIXEL_LENGTH']
+    #   psy= header['PIXEL_HEIGHT']
+    #   distance = header['DISTANCE']
+    #   return distance, psx, psy, wl, bx, by
     
-    if fileExtension == '.cbf':
+    #if fileExtension == '.cbf':
         header=header['_array_data.header_contents'].split('\n')
         for setting in header:
             if 'Pixel_size' in setting:
@@ -37,5 +37,5 @@ def readheader(header,filename):
                 det1 = setting.split()[3].strip(',')
                 det = det0 + det1
                 if det in ['Pilatus6M', 'Pilatus36M']: det = 'Pilatus6M'
-        return distance, psx, psy, wl, bx, by, det
+        return map(float, [distance, psx, psy, wl, bx, by]) + [det]
        

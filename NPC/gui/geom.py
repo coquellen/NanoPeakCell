@@ -157,12 +157,70 @@ def DoReconstruct(data, geom_params, size):
             xmax = int(round((size / 2) - delta_y))
             ymin = int(round((size / 2) + delta_x))
             ymax = int(round((size / 2) + delta_x + rot.shape[1]))
-        print alpha, xmin, xmax, ymin, ymax, rot.shape
+        #print alpha, xmin, xmax, ymin, ymax, rot.shape
         #print
         reconstructed[xmin:xmax, ymin:ymax] = rot
 
     return reconstructed[:,::-1]
+    #return reconstructed
 
+
+def DoReconstruct_SWISSFEL(data, geom_params, size):
+    reconstructed = np.zeros((size, size))
+
+    for params in geom_params.values():
+
+        min_fs, max_fs, min_ss, max_ss = [int(float(p)) for p in params[0:4]]
+
+        x = float(params[4].split('x')[0])
+        y = float(params[4].split('y')[0].split('x')[1])
+        data_tile = data[ min_ss:max_ss + 1, min_fs:max_fs + 1][::-1,:]  # , indices[1,::][min_ss:max_ss+1,min_fs:max_fs+1][::-1,:]
+        delta_x = float(params[-2])
+        delta_y = float(params[-1])
+        if x > 0 and y > 0:
+            alpha = np.arctan(y / x) * 180. / np.pi
+        if x > 0 and y < 0:
+            alpha = np.arctan(y / x) * 180. / np.pi
+        if x < 0 and y > 0:
+            if np.abs(x) > 0.5:
+                alpha = 180 - np.arctan(y / x) * 180. / np.pi
+            else:
+                alpha = 180 + np.arctan(y / x) * 180. / np.pi
+        if x < 0 and y < 0:
+            alpha = 180 - np.arctan(y / np.abs(x)) * 180. / np.pi
+
+        rot = rotate(data_tile, alpha)
+
+        if int(alpha) in range(80, 100):
+            xmin = int(round((size / 2) - delta_y - rot.shape[0]))
+            xmax = int(round((size / 2) - delta_y))
+            ymin = int(round((size / 2) - delta_x + rot.shape[1]))
+            ymax = int(round((size / 2) - delta_x))
+
+        elif int(alpha) in range(175, 185):
+            xmin = int(round((size / 2) - delta_y))
+            xmax = int(round((size / 2) - delta_y + rot.shape[0]))
+            ymin = int(round((size / 2) - delta_x + rot.shape[1]))
+            ymax = int(round((size / 2) - delta_x))
+
+        elif int(alpha) in range(-95, -85) or int(alpha) in range(265, 275):
+            xmin = int(round((size / 2) - delta_y))
+            xmax = int(round((size / 2) - delta_y + rot.shape[0]))
+            ymin = int(round((size / 2) - delta_x))
+            ymax = int(round((size / 2) - delta_x - rot.shape[1]))
+
+        else:
+
+            xmin = int(round((size / 2) - delta_y - rot.shape[0]))
+            xmax = int(round((size / 2) - delta_y))
+            ymin = int(round((size / 2) - delta_x))
+            ymax = int(round((size / 2) - delta_x - rot.shape[1]))
+        #print alpha, xmin, xmax, ymin, ymax, rot.shape
+        #print
+        reconstructed[xmin:xmax, ymax:ymin] = rot
+
+    #return reconstructed[:,::-1]
+    return reconstructed
 def DoReconstruct_dev(data, geom_params,size):
         reconstructed = np.indices((size,size))
         indices = np.indices(data.shape)#.reshape(data.shape)
@@ -243,6 +301,8 @@ def reconstruct(data,geom):
         if len(geom_params) == 64: return DoReconstruct(data,geom_params,size=1800)
         if len(geom_params) == 8: return DoReconstruct(data, geom_params, size=2400)
         if len(geom_params) == 128: return DoReconstruct(data, geom_params, size=2000)
+        if len(geom_params) == 32: return DoReconstruct_SWISSFEL(data, geom_params, size=6000)
+
 
     else:
         err = 1
@@ -254,14 +314,17 @@ def reconstruct(data,geom):
 
 if __name__ == '__main__':
     from matplotlib import pyplot as plt
-    geom_params  = parse_geom_file_quadrants('/Users/coquelleni/EuXFEL/current.geom')
+    #geom_params  = parse_geom_file_quadrants('/Users/coquelleni/EuXFEL/current.geom')
 
-    #import h5py
+    import h5py
     #h5 = h5py.File('/Users/coquelleni/EuXFEL/powder.h5')
+    h5 = h5py.File('/Users/coquelleni/Downloads/run19.JF06T32V01-max.h5')
 
-    #dset = h5['data/data'][:]
+    geom_params = parse_geom_file('/Users/coquelleni/Downloads/jf16m-alvra.geom')
+    dset = h5['data/data'][0,::]
     #print dset.keys()
     #h5.close()
-    #reconstructed = reconstruct(dset, geom_params)
-    #plt.imshow(reconstructed, vmin=0, vmax=300, cmap='spectral')
-    #plt.show()
+    reconstructed = reconstruct(dset, geom_params)
+    print reconstructed.shape
+    plt.imshow(reconstructed, vmin=0, vmax=1000, cmap='hot')
+    plt.show()
