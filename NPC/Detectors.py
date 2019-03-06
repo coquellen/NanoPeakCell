@@ -49,6 +49,25 @@ class Frelon(object):
         self.mask = np.zeros(self.shape)
         self.spline = None
 
+class Jungfrau4M(object):
+    def __init__(self):
+        self.resolution=(6000, 6000)
+        self.shape = self.resolution
+        self.pixel1 = 75e-6
+        self.pixel2 = 75e-6
+        self.mask = np.zeros(self.shape)
+        self.spline = None
+
+class Jungfrau16M(object):
+    def __init__(self):
+        self.resolution=(6000, 6000)
+        self.shape = self.resolution
+        self.pixel1 = 75e-6
+        self.pixel2 = 75e-6
+        self.mask = np.zeros(self.shape)
+        self.spline = None
+
+
 class AgipD(object):
     def __init__(self):
         self.resolution = (2000, 2000)

@@ -14,7 +14,7 @@ Eiger_list = ["Eiger500k",
             "Eiger9M",
             "Eiger16M"]
 
-otherDet_list = ['CSPAD', 'MPCCD', 'AgipD', 'RayonixMx225hs']
+otherDet_list = ['CSPAD', 'MPCCD', 'AgipD', 'Jungfrau4M', 'Jungfrau16M','RayonixMx225hs']
 
 det_list = Pilatus_list + Eiger_list + otherDet_list
 

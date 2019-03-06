@@ -157,7 +157,7 @@ def DoReconstruct(data, geom_params, size):
             xmax = int(round((size / 2) - delta_y))
             ymin = int(round((size / 2) + delta_x))
             ymax = int(round((size / 2) + delta_x + rot.shape[1]))
-        #print alpha, xmin, xmax, ymin, ymax, rot.shape
+        print alpha, xmin, xmax, ymin, ymax, rot.shape
         #print
         reconstructed[xmin:xmax, ymin:ymax] = rot
 
@@ -215,12 +215,10 @@ def DoReconstruct_SWISSFEL(data, geom_params, size):
             xmax = int(round((size / 2) - delta_y))
             ymin = int(round((size / 2) - delta_x))
             ymax = int(round((size / 2) - delta_x - rot.shape[1]))
-        #print alpha, xmin, xmax, ymin, ymax, rot.shape
-        #print
         reconstructed[xmin:xmax, ymax:ymin] = rot
 
-    #return reconstructed[:,::-1]
     return reconstructed
+
 def DoReconstruct_dev(data, geom_params,size):
         reconstructed = np.indices((size,size))
         indices = np.indices(data.shape)#.reshape(data.shape)
@@ -297,11 +295,17 @@ def DoReconstruct_dev(data, geom_params,size):
 def reconstruct(data,geom):
     geom_params , shape = geom
     if data.shape == shape:
-
         if len(geom_params) == 64: return DoReconstruct(data,geom_params,size=1800)
-        if len(geom_params) == 8: return DoReconstruct(data, geom_params, size=2400)
+
+        if len(geom_params) == 8:
+            if data.shape == (4112, 1030):
+                return DoReconstruct_SWISSFEL(data, geom_params, size=6000)
+            else:
+                return DoReconstruct(data, geom_params, size=2400)
+
         if len(geom_params) == 128: return DoReconstruct(data, geom_params, size=2000)
-        if len(geom_params) == 32: return DoReconstruct_SWISSFEL(data, geom_params, size=6000)
+
+        if len(geom_params) == 32 or len(geom_params) == 8: return DoReconstruct_SWISSFEL(data, geom_params, size=6000)
 
 
     else:
