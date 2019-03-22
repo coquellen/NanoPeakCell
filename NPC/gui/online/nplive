@@ -4,7 +4,10 @@ from multiprocessing import Process
 from NPC.utils import  Log
 import pyqtgraph as pg
 import zmq
-from PyQt4 import  QtGui, QtCore
+try:
+    from PyQt5 import QtGui, QtCore
+except:
+    from PyQt4 import QtGui, QtCore
 from NPC.gui.Views import ImageViewOnline, XPView, HitLive, MaxProjViewOnline
 
 from NPC.gui.online.EigerLive_process import loadBalancer, MPloadBalancer, workerEiger
@@ -13,7 +16,6 @@ pg.setConfigOptions(imageAxisOrder='row-major')
 app = QtGui.QApplication([])
 import inspect, time, json , os
 import argparse, requests
-
 
 class LiveMenuBar(QtGui.QMenuBar):
     def __init__(self, parentWidget, controller):
@@ -102,7 +104,7 @@ class LiveMenuBar(QtGui.QMenuBar):
         if getattr(self, attr).isChecked():
             view.show()
             view.visible = True
-            view.move(view.Pos)
+
         else:
             view.hide()
 

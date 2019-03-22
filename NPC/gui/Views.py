@@ -335,7 +335,6 @@ class NPGViewBox(CustomViewBox):
                            pen={'color': "FF0", 'width': 4}, binning= self.binning)
         self.roi.hide()
         self.addItem(self.roi)
-        # TODO: Change to the pkg path (see old npg)
         self.cmaps = [np.load(pkg.resource_filename('NPC','gui/cmaps/%s.npy'%self.parent.ui.ColorMap.itemText(i))) for i in range(self.parent.ui.ColorMap.count())]
         #self.autoRange(items=[self.img])
 
@@ -641,6 +640,7 @@ class ImageViewOnline(ImageView):
         self.request = req
         self.timeout = timeout
         self.sendReq = True
+        self.data = None
 
         self.imgTimer = QtCore.QTimer()
         self.imgTimer.timeout.connect(self.sendRequest)
@@ -747,6 +747,7 @@ class XPView(NPGWidget):
         self.d = 0
         self.ui = XP_Params_ui.Ui_Form()
         self.ui.setupUi(self, Live)
+        self.Live = Live
         self.show()
 
     def setupData(self):
@@ -787,6 +788,7 @@ class XPView(NPGWidget):
         self.psx = self.detector.pixel1
         self.psy = self.detector.pixel2
         if verbose: Log("Detector updated to %s" % str(det))
+        if self.Live: self.ui.Detector.setDisabled(True)
 
     def closeEvent(self, evt):
         if evt.spontaneous():
@@ -1380,9 +1382,13 @@ class HitLive(NPGWidget):
         self.hr_data = np.zeros(100)
 
         # This is in the Qwidget HitWin
-        QtCore.QObject.connect(self.ui.clearHitRate, QtCore.SIGNAL("clicked()"), self.clearHitRate)
-        QtCore.QObject.connect(self.zmqTimer, QtCore.SIGNAL("timeout()"), self.receiveFromWorkers)
-        QtCore.QObject.connect(self.plotTimer, QtCore.SIGNAL("timeout()"), self.plot)
+        #self.MaxProjView.view.roi.sigDragFinished.connect(self.ImageView.view.roi.setPosNSize)
+        self.ui.clearHitRate.clicked.connect(self.clearHitRate)
+        self.zmqTimer.timeout.connect(self.receiveFromWorkers)
+        self.plotTimer.timeout.connect(self.plot)
+        #QtCore.QObject.connect(self.ui.clearHitRate, QtCore.SIGNAL("clicked()"), self.clearHitRate)
+        #QtCore.QObject.connect(self.zmqTimer, QtCore.SIGNAL("timeout()"), self.receiveFromWorkers)
+        #QtCore.QObject.connect(self.plotTimer, QtCore.SIGNAL("timeout()"), self.plot)
 
         self.ui.thresh.editingFinished.connect(self.setThreshold)
         self.ui.UpdateROI.clicked.connect(self.resetROI)
