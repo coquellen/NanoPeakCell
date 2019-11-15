@@ -246,7 +246,5 @@ if __name__ == '__main__':
                     presenter()
                     print(m)
 
-
-
         else:
             print("Sorry: NPC configuration file not found (%s)"%config_file)

@@ -30,9 +30,9 @@ def check_input(options):
     :return: bool, message
     """
     # Check that the input directory file exists
-    print options['experiment']
-    print options['output_directory']
-    return True, ""
+    #print options['experiment']
+    #print options['output_directory']
+    #return True, ""
     if not os.path.exists(options['output_directory']):
         print("Output directory does not exist - Creating it")
         mkdir_p(options['output_directory'])

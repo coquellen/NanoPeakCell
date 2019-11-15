@@ -471,7 +471,6 @@ class MProcessEiger(MProcess):
                                                  (0,self.detector.shape[0],0,self.detector.shape[1]))
 
                 self.saveHit(self.h5in,i)
-
                 self.count += 1
         self.h5.close()
         return
@@ -519,6 +518,7 @@ class MProcessEiger(MProcess):
 
     def saveH5(self, OutputFileName,extStr):
         if self.Nhits % self.NFramesPerH5 == 0:
+
             if self.h5out is not None: self.h5out.close()
             OutputFileName = os.path.join(self.options['output_directory'],
                                           'NPC_run%s' % (self.options['num'].zfill(3)),

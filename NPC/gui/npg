@@ -166,6 +166,7 @@ class NPGController(object):
         self.XPView.hideMe.connect(self.menuBar.UncheckMenuView)
         self.HitFindingView.hideMe.connect(self.menuBar.UncheckMenuView)
         self.Table.hideMe.connect(self.menuBar.UncheckMenuView)
+        self.ImgModel.updateStream.connect(self.getStreamFrame)
 
         self.TreeFileView.openFile.connect(self.ImgModel.updateData)
         self.Table.loadResults.connect(self.LoadResults)
@@ -185,7 +186,8 @@ class NPGController(object):
         self.ImgModel.updateXParams.connect(self.XPView.readHeader)
         self.ImageView.ui.radioButton1.toggled.connect(self.onToggled)
         self.ImageView.ui.radioButton2.toggled.connect(self.onToggled)
-
+        self.ImageView.ui.DetectedPeaks.stateChanged.connect(self.OnDetectedPeaks)
+        self.ImageView.ui.IntegratedPeaks.stateChanged.connect(self.OnIntegratedPeaks)
         # Bindings with HF
         self.HitFindingView.ui.PlayButton_2.clicked.connect(self.startNPC)
         #self.HitFindingView.ui.Stop.clicked.connect(self.stopNPC)
@@ -441,13 +443,24 @@ class NPGController(object):
         self.TreeFileView.ui.LoadResultsBut.setDisabled(True)
         self.objThread.start()
 
+    def getStreamFrame(self, args):
+        key = args[0][0]
+        print(self.stream.fns_dict[key])
+        self.stream.get_frame(key)
+        peaks = self.stream.get_peaks()
+        self.ImageView.view.IntegratedPlot.setData(peaks[:,0] / self.binning,
+                                                   peaks[:,1] / self.binning)
+        print peaks
+        #self.ImageView.view.DetectedPlot.setBrush(self.ImageView.view.emptyBrush)
+
     def parsedStream(self):
         self.objThread.quit()
         self.ImageView.ui.radioButton1.setDisabled(False)
         self.ImageView.ui.radioButton2.setDisabled(False)
         self.TreeFileView.ui.LoadResultsBut.setDisabled(False)
-        ncrystals = self.stream.fns_dict[-1]["Ncrystal"]
-        self.ImageView.ui.Nfiles.setText("%s frames, %s crystals" % (len(self.stream.fns_dict), ncrystals))
+        self.ImgModel.loadedstream = True
+        #ncrystals = self.stream.fns_dict[-1]["Ncrystal"]
+        #self.ImageView.ui.Nfiles.setText("%s frames, %s crystals" % (len(self.stream.fns_dict), ncrystals))
 
     def infoStream(self, info):
         nimages, ncrystals = info
@@ -461,18 +474,25 @@ class NPGController(object):
             pass
 
     def OnIntegratedPeaks(self):
+        print("Called OnIntegratedPeaks")
+        return
         if self.integrated is not None:
-            if self.ui.InetgratedPeaks.isChecked():
-                self.IntegratedPlot.setData(self.integratedPeaks[0],self.integratedPeaks[1])
-                self.DetectedPlot.setBrush(self.brush1)
+            if self.ImageView.ui.IntegratedPeaks.isChecked():
+                self.ImageView.view.IntegratedPlot.setData(self.integratedPeaks[0] / self.binning, self.integratedPeaks[1] / self.binning)
+                self.ImageView.view.DetectedPlot.setBrush(self.ImageView.view.emptyBrush)
             else:
-                self.IntegratedPlot.setData([])
-                self.DetectedPlot.setBrush(self.brush0)
-        if self.ui.DetectedPeaks.isChecked():
-            self.DetectedPlot.clear()
-            self.DetectedPlot.setData(self.detectedPeaks[0],self.detectedPeaks[1])
+                self.ImageView.view.IntegratedPlot.setData([])
+                self.ImageView.view.DetectedPlot.setBrush(ImageView.view.filledBrush)
+
+        if self.ImageView.ui.DetectedPeaks.isChecked():
+            self.ImageView.view.DetectedPlot.clear()
+            self.ImageView.view.DetectedPlot.setData(self.detectedPeaks[0],self.detectedPeaks[1])
 
     def OnDetectedPeaks(self):
+
+        print("Called OnDetectedPeaks")
+        return
+
         if self.peaks is not None:
             if self.ui.DetectedPeaks.isChecked():
                 if self.ui.InetgratedPeaks.isChecked():
@@ -760,7 +780,7 @@ class NPGController(object):
     def restoreRuns(self):
         d = os.path.realpath(str(self.HitFindingView.ui.ResultsPath.text()))
         dirs = sorted(glob.glob(os.path.join(d,'NPC_run*')))
-        print dirs
+        #print dirs
         self.nRun, self.nRow = self.Table.restoreRows(dirs)
 
 

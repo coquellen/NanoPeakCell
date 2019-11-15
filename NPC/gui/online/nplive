@@ -267,6 +267,8 @@ class LiveEiGerController(object):
             settings['maskFN'] = ""
 
         settings['shape'] = self.XPView.detector.shape
+        settings['IP'] = self.HF.ip
+
         with open(os.path.expanduser('~/.NPGLiverc.json'), 'w') as outfile:
             json.dump(settings, outfile)
 
@@ -418,7 +420,7 @@ class HitFinderParameters(object):
         self.maskFN = args.mask[0]
         self.ip = args.ip[0]
         self.ncpus = args.cpus[0]
-
+        self.computeMP = False
         self.x1 = 0
         self.y1 = 0
         self.x2 = 0
@@ -429,6 +431,8 @@ class HitFinderParameters(object):
             self.shape = self.EigerShapes[self.Eiger.lower()]
             self.x2 = self.shape[0]
             self.y2 = self.shape[1]
+        else:
+            self.x2, self.y2 = (1400,1400)
         self.roi = [self.x1, self.y1, self.x2, self.y2]
         self.RADDAM = False
         self.NShots = 0
@@ -473,11 +477,12 @@ class ArgumentParser(argparse.ArgumentParser):
 
 
         else:
-            # Here should check the ip address if not in debug mode
+            # Here check the ip address if not in debug mode
             if not self.args.debug:
                 try:
                     r = requests.get("http://%s/stream/api/1.3.1/config/mode" % self.args.ip[0],timeout=0.01)
                     if r.status_code == 200:
+
                         streamMode = r.json()["value"]
                         if streamMode == 'disabled':
 
@@ -524,6 +529,7 @@ class ArgumentParser(argparse.ArgumentParser):
 if __name__ == '__main__':
     import sys
     parser = ArgumentParser()
+
     if parser.check_input():
 
         HF = HitFinderParameters(parser.args)

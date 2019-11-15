@@ -55,7 +55,7 @@ class ZmqTimer(object):
             self.callback(self.backend, self.workers_MP[self.N % len(self.workers_MP)], self.client, self.request)
             #self.backend.send_multipart([self.workers_MP[self.N % len(self.workers_MP)], b"", "MaxProj-Client", b"", "MAXPROJ"])
             self.N += 1
-            print self.workers_MP, len(self.workers_MP)
+            print(self.workers_MP, len(self.workers_MP))
             if self.N % len(self.workers_MP) == 0: self.N = 0
 
             self.last_call = time.time()
@@ -175,7 +175,7 @@ class ZMQPullBind(object):
             puller = context.socket(zmq.PULL)
             for opt in self.opts:
                 puller.setsockopt(opt, 1)
-            print "Puller: tcp://{0}:{1}".format(self.host, self.port)
+            print("Puller: tcp://{0}:{1}".format(self.host, self.port))
             puller.bind("tcp://{0}:{1}".format(self.host, self.port))
 
             self.puller = puller

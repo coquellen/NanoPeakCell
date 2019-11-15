@@ -11,7 +11,7 @@ except:
     from PyQt4.QtCore import  pyqtSignal, QObject
 
 import numpy as np
-from NPC.gui.geom import reconstruct, parse_geom_file_quadrants, parse_geom_file, getGeomTransformations
+from NPC.gui.geom import Geom, parse_geom_file_quadrants
 import NPC.gui.peakfind as pf
 
 
@@ -118,6 +118,7 @@ class NPGData(QObject):
 
     updateImageView = pyqtSignal(np.ndarray)
     updateXParams = pyqtSignal(dict)
+    updateStream = pyqtSignal(tuple)
     #dataReceived = pyqtSignal(tuple)
     binning = 2
 
@@ -130,19 +131,22 @@ class NPGData(QObject):
         self.loadedMask = False
         self.mask = None
         self.loadedGeom = False
-        self.geom = None
+        self.geom = Geom()
         self.IO = OpenImage()
         self.MaxOverThreshold = 10000
+        self.loadedstream = False
         #self.socketTimer = QTimer()
         #self.socketTimer.timeout.connect(self.receiveMSG)
 
     def updateData(self, *args):
-        data  = self.IO.openFrame(args)
+        #data  = self.IO.openFrame(args)
         self.data, self.header = self.IO.openFrame(args)
         self.applyCorrection()
         self.updateImageView.emit(self.data)
         if self.header is not None:
             self.updateXParams.emit(self.header)
+        if self.loadedstream:
+            self.updateStream.emit(args)
 
     def updateMask(self, fn):
         ext = os.path.splitext(str(fn))[1]
@@ -158,16 +162,17 @@ class NPGData(QObject):
 
     def updateStreamGeom(self, fn):
         self.updateGeom(str(fn), openfn=False)
-        if len(self.geom[0]) > 1: self.DetTransfo = getGeomTransformations(self.geom[0])
+        #if len(self.geom[0]) > 1: self.DetTransfo = getGeomTransformations(self.geom[0])
 
-        self.panels = self.geom[0].keys()
-        params = self.geom[0][self.geom[0].keys()[0]]
-        self.ss = int(params[1]) - int(params[0]) + 1
-        self.fs = int(params[3]) - int(params[2]) + 1
-        print("Geom updated")
+        #self.panels = self.geom[0].keys()
+        #params = self.geom[0][self.geom[0].keys()[0]]
+        #self.ss = int(params[1]) - int(params[0]) + 1
+        #self.fs = int(params[3]) - int(params[2]) + 1
+        #print("Geom updated")
 
     def updateGeom(self, fn, openfn=True):
-        self.geom = parse_geom_file(fn, openfn=openfn)
+        #self.geom = parse_geom_file(fn, openfn=openfn)
+        self.geom.load(fn, openfn)
         self.loadedGeom = True
         if self.data is not None:
             self.applyCorrection()
@@ -196,9 +201,9 @@ class NPGData(QObject):
             self.data -= self.dark
 
         if self.loadedGeom:
-            if self.data.shape == self.geom[1]:
+            if self.data.shape == self.geom.size:
                 print("Geometry transformation applied")
-                self.data = reconstruct(self.data, self.geom)
+                self.data = self.geom.reconstruct(self.data)
             else:
                 print("Geometry transformation NOT Applied: Geometry dimensiosn not appropriate")
 

@@ -79,7 +79,7 @@ class LCLSClient(Client):
                 continue
             # data = self.DataCorrection.DarkCorrection(img2, self.args.roi.tuple)  # data shape 32 * 185 * 388
             # The hit is performed on the corrected image - using the provided mask
-            if IsHit(self.DataCorrection.MaskCorrection(img2, self.args.roi.tuple), self.args['threshold'],
+            if IsHit(self.Correction.MaskCorrection(img2, self.args.roi.tuple), self.args['threshold'],
                      self.args['npixels']):
 
                 self.Nhits += 1

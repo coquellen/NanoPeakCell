@@ -39,6 +39,165 @@ def ventilator():
     #time.sleep(1)
     print("Ventilator Done")
 
+def workerEuXFEL(wrk_num, HF):
+    from karabo_bridge import Client
+
+    # Initialize a zeromq context
+    context0 = zmq.Context()
+
+    # The Eiger stream is a push socket on port 9999
+    # Setup a Pull socket to get data from stream
+    if wrk_num == 0:
+        Log("Initializing the ZMQ Pull socket to get the Eiger stream at ip %s" %HF.ip)
+
+    streamReceiver = context0.socket(zmq.PULL)
+    streamReceiver.connect("tcp://%s:9999"%HF.ip)
+    client = Client('tcp://10.253.0.51:45010')
+
+    # Set up a channel to send result of work to the results reporter (PUSH socket @ port 5558)
+    results_sender = context0.socket(zmq.PUSH)
+    results_sender.connect("tcp://127.0.0.1:5558")
+
+    # Set up a channel to receive control messages over directly from the GUI(SUB socket @ port 5559)
+    control_receiver = context0.socket(zmq.SUB)
+    control_receiver.connect("tcp://127.0.0.1:5559")
+    #Subscribe to all messages
+    control_receiver.setsockopt(zmq.SUBSCRIBE, "")
+
+    # Set up a channel to send messages to the load balancer (including images)
+    #
+    backend = zmq.Context().socket(zmq.DEALER)
+    backend.identity = u"Worker-{}".format(wrk_num).encode("ascii")
+    backend.connect("tcp://localhost:5571")
+
+    MPbackend = zmq.Context().socket(zmq.DEALER)
+    MPbackend.identity = u"Worker-{}".format(wrk_num).encode("ascii")
+    MPbackend.connect("tcp://localhost:5561")
+
+    MPbackend.send(b"START")
+    # send a start message to receive the parameters from the gui at startup...
+    backend.send(b"START")
+    newParams = backend.recv_json()
+    for key in newParams.keys():
+        #if getattr(HF, key) is None:
+        setattr(HF, key, newParams[key])
+    if HF.maskFN is not None:
+        import time
+        time.sleep(wrk_num/2.)
+        HF.mask = openMask(HF.maskFN)
+    #
+
+    # Set up a poller to multiplex the work receiver and control receiver channels
+    poller = zmq.Poller()
+    poller.register(streamReceiver, zmq.POLLIN)
+    poller.register(control_receiver, zmq.POLLIN)
+    poller.register(backend, zmq.POLLIN)
+    poller.register(MPbackend, zmq.POLLIN)
+
+    # Loop and accept messages from both channels, acting accordingly
+    Nprocessed = 0
+    Nhits = 0
+    total = 0
+    p0 = ptime.time()
+    data = None
+
+    if HF.debug:
+        MP = np.full(HF.shape, wrk_num, dtype=np.int32)
+    else:
+        MP = np.zeros((16,512,128), dtype=np.int32)
+
+    data2SND = True
+    hit_IDX = []
+    nohit_IDX = []
+
+
+    while True:
+        socks = dict(poller.poll())
+
+
+        # If the message came over the control channel, update parameters.
+        if socks.get(streamReceiver) == zmq.POLLIN:
+            data = streamReceiver.recv_json()
+
+            #data = client.next()
+            array = data[0]['SPB_DET_AGIPD1M-1/CAL/APPEND_CORRECTED']['image_data'].shape
+            Nprocessed += array.shape[0]
+            total += array.shape[0]
+            if HF.mask is not None:
+                data = data * HF.mask
+            # roi = data[HF.x1:HF.x2, HF.y1:HF.y2]
+
+            hits = np.where(np.count_nonzero(data > HF.threshold, axis=(1, 2, 3)) >= HF.npixels)
+            # hit = data
+            # if roi[roi > HF.threshold].size > HF.npixels:
+            Nhits += 1
+            hit = data[0, :, :]
+            if HF.computeMP:
+                MP = np.maximum(MP, np.amax(data, axis=0))
+            if data2SND:
+                backend.send(b"READY")
+                data2SND = False
+                # else:
+                #    nohit_IDX.append(frameID)
+
+    if socks.get(control_receiver) == zmq.POLLIN:
+            newParams = control_receiver.recv_json(zmq.NOBLOCK)
+
+            if newParams.keys()[0] in ["STOP", "resetMP"]:
+                key = newParams.keys()[0]
+                if newParams[key] == "resetMP":
+                    MP[::] = 0
+                    if wrk_num == 0:
+                        MPbackend.send(b"resetMP")
+                        Log("Message received from Control Gui: Resetting MP")
+
+
+                elif newParams[key] == "STOP":
+                    if wrk_num == 0:
+                        backend.send(b"STOP")
+                        MPbackend.send(b"STOP")
+                        Log("Message received from Control Gui: Exiting")
+                    break
+
+            else:
+                for key in newParams.keys():
+                    setattr(HF, key, newParams[key])
+                    if wrk_num == 0:
+                        Log("Message received from Control Gui: Setting %s to value %s"%(key,str(newParams[key])))
+
+        if socks.get(backend) == zmq.POLLIN:
+            _, address, _, request = backend.recv_multipart()
+            if hasattr(data, 'shape'):
+                    backend.send(address, flags=zmq.SNDMORE)
+                    backend.send_json({'dtype': str(data.dtype), 'shape': data.shape}, flags=zmq.SNDMORE)
+                    backend.send(hit, flags=0, copy=False, track=False)
+                    data2SND = True
+
+        if socks.get(MPbackend) == zmq.POLLIN:
+            _, address, _, request = MPbackend.recv_multipart()
+            MPbackend.send(address, flags=zmq.SNDMORE)
+            MPbackend.send_json({'dtype': str(MP.dtype), 'shape': MP.shape}, flags=zmq.SNDMORE)
+            MPbackend.send(MP, flags=0, copy=False, track=False)
+
+        # If enough time elapsed... send stats via the result channel @ 5558 (PUSH socket)
+        p1 = ptime.time()
+        if p1 - p0 > 0.5:
+            if Nprocessed > 0:
+                stats = {'worker': wrk_num, 'processed': Nprocessed, 'hits': Nhits}
+                results_sender.send_json(stats)
+                Nprocessed = 0
+                Nhits = 0
+                p0 = p1
+
+    backend.close()
+    MPbackend.close()
+    streamReceiver.close()
+    results_sender.close()
+    control_receiver.close()
+    context0.term()
+    Log("Worker %i exited properly" %wrk_num)
+
+
 def workerEiger(wrk_num, HF):
     from NPC.gui.ZmqSockets import EigerStreamDecoder
     #This class has been generously provided by Sacha Grimm from Dectris, and slightly modified for our implementation
@@ -138,7 +297,8 @@ def workerEiger(wrk_num, HF):
                         Nhits += 1
                         hit = data
                         hit_IDX.append(frameID)
-                        MP = np.maximum(MP, data)
+                        if HF.computeMP:
+                            MP = np.maximum(MP, data)
                         if data2SND:
                             backend.send(b"READY")
                             data2SND = False
@@ -505,7 +665,7 @@ def send_multi(socket, origin, destination, request):
 
 def MPloadBalancer(HF):
 
-    #Binning de 2 pour Max Proj si > 4M
+    # Binning de 2 pour Max Proj si > 4M
     """Load balancer for Maximum Projection
     """
     # Prepare context and sockets
@@ -583,7 +743,7 @@ def workerLCLS(wrk_num, HF, address):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
-    from psana import *
+    #from psana import *
     ds = DataSource('exp=cxitut13:run=10:smd')
     det = Detector('DscCsPad')
 

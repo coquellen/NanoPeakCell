@@ -645,6 +645,7 @@ class ImageViewOnline(ImageView):
         self.imgTimer = QtCore.QTimer()
         self.imgTimer.timeout.connect(self.sendRequest)
         self.imgTimer.start(timeout)
+        #self.imgTimer.setInterval()
 
     def proc(self, data):
         self.setImg(data)
@@ -704,16 +705,11 @@ class MaxProjViewOnline(ImageViewOnline):
         A = np.frombuffer(buf, dtype=md['dtype']).reshape(md['shape'])
         self.proc(A)
 
-
-    def proc(self, data):
-        self.setImg(data)
-
     def resetMP(self):
         self.MP = np.zeros(self.shape)
         self.setImg(self.MP)
         self.saveMP()
         self.sigResetMP.emit()
-
 
     def saveMP(self):
         now = datetime.today()
@@ -1121,8 +1117,8 @@ class TableWidget(NPGWidget):
         for d in dirs:
             nRun = int(d[-3:])
             self.addRow(nRun)
-            print nRun
-            print self.Nevents
+            #print nRun
+            #print self.Nevents
             try:
                 options = json.loads(open(os.path.join(d, ".NPC_params.json")).read())
                 nRun = int(options['num'])

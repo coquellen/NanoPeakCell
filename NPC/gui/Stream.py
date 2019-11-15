@@ -1,10 +1,10 @@
-import os
+
 import sys
 import numpy as np
+import argparse
 
-sys.path.insert(0, '../gui/')
-#sys.path.insert(0, '../gui/')
-from geom import parse_geom_file, reconstruct, getGeomTransformations
+#from NPC.gui.geom import Geom
+from geom import Geom
 from NPC import utils
 try:
     from PyQt5.QtCore import QThread, QObject, pyqtSignal
@@ -173,23 +173,22 @@ class CrystFELStreamLight(QObject):
     finished = pyqtSignal()
     info = pyqtSignal(tuple)
 
-    fns_dict = []
+    fns_dict = {}
 
 
-    def __init__(self, streamfile, mainThread):
+    def __init__(self, streamfile, mainThread=None):
         super(CrystFELStreamLight, self).__init__()
         self.streamfile = streamfile
         self.mainThread = mainThread
+        self.geometry = Geom()
 
     def parse_stream(self):
         count_shots = 0
         count_crystals = 0
         self.header = ''
-        #geom = Geom()
-        #self.stream =
         head_check = 0
         GEOM_FLAG = 0
-        self.geom = ''
+        self.geom_str = ''
         self.filenames = []
         self.indexed = []
         emit = 0
@@ -202,13 +201,15 @@ class CrystFELStreamLight(QObject):
 
                 self.header += line
                 if '----- Begin geometry file -----' in line: GEOM_FLAG = 1
-                if GEOM_FLAG: self.geom += line
+                if GEOM_FLAG: self.geom_str += line.split(';')[0].strip()+'\n'
                 if '----- End geometry file -----' in line:
                     GEOM_FLAG = 0
-                    self.sendGEOM.emit(self.geom)
+                    self.sendGEOM.emit(self.geom_str)
+                    #self.geometry.load(self.geom_str, open_fn=False)
 
 
-                ### Get beginning of an image
+
+            ### Get beginning of an image
             if 'Begin chunk' in line:
                 count_shots += 1
                 head_check = 1
@@ -217,20 +218,20 @@ class CrystFELStreamLight(QObject):
                 offsets['BeginChunk'] = self.offset
 
             elif 'Image filename' in line:
-                fn = line.split()[2].strip()
-                offsets['fn'] = fn
-                self.filenames.append(fn)
+                self.fn = line.split()[2].strip()
+                #offsets['fn'] = self.fn
+                self.filenames.append(self.fn)
 
             elif 'End chunk' in line:
                 offsets['EndChunk'] = self.offset
                 prt=1
-                self.fns_dict.append(offsets)
+                self.fns_dict[self.fn] = offsets
 
             elif 'Begin crystal' in line:
                 count_crystals += 1
                 offsets['Ncrystal'] = count_crystals
                 offsets['crystal'] = 1
-                self.indexed.append(fn)
+                self.indexed.append(self.fn)
 
 
             self.offset += len(line)
@@ -245,11 +246,99 @@ class CrystFELStreamLight(QObject):
                     self.info.emit((count_shots, count_crystals))
             sys.stdout.flush()
         print('%7i frames parsed, %7i crystals found' % (count_shots, count_crystals))
+
         self.stream = open(self.streamfile, 'r', 8192)
         self.info.emit((count_shots, count_crystals))
+        self.update.emit([self.filenames, self.indexed])
         self.moveToThread(self.mainThread)
         self.finished.emit()
 
+
+    def get_frame(self,fn):
+        BC = self.fns_dict[fn]['BeginChunk']
+        EC = self.fns_dict[fn]['EndChunk']
+        offset = BC
+        self.frame = ''
+        self.stream.seek(BC)
+        for line in self.stream:
+            if offset > EC: break
+            self.frame += line
+            offset += len(line)
+
+    def get_reflections(self):
+        keys = [tile.name for tile in self.geometry.tiles]
+        PEAKS = {key: [] for key in keys}
+        lines = self.frame.split('\n')
+        add = False
+        for line in lines:
+            if 'End of reflections' in line: break
+            if add:
+                fs, ss = map(float,line.split()[7:9])
+                tile = str(line.split()[9]).strip()
+                PEAKS[tile].append([fs, ss])
+            if '   h    k    l          I   sigma(I) ' in line: add = True
+        RPEAKS = []
+        for i, key in enumerate(keys):
+            if len(PEAKS[key]) > 0:
+                #RPEAKS.append(self.geometry.tiles[i].rotate_peaks(PEAKS[key]))
+                RPEAKS.append(np.array(PEAKS[key]))
+        return np.vstack(RPEAKS)
+
+
+    def get_peaks(self):
+        keys = [tile.name for tile in self.geometry.tiles]
+        PEAKS = {key: [] for key in keys}
+        lines = self.frame.split('\n')
+        add = False
+        for line in lines:
+            if 'End of peak list' in line: break
+            if add:
+                fs, ss = map(float, line.split()[0:2])
+                tile = str(line.split()[4])
+                PEAKS[tile].append([fs, ss])
+            if '  fs/px   ss/px (1/d)/nm^-1   Intensity  Panel' in line: add = True
+        RPEAKS = []
+        for i, key in enumerate(keys):
+
+            #if key in ['q1a2']:
+                if len(PEAKS[key]) > 0:
+                    PEAKS[key] = np.array(PEAKS[key])
+                    PEAKS[key][:, 1] = self.geometry.size[0] - PEAKS[key][:, 1]
+                    PEAKS[key][:, 0] = PEAKS[key][:, 0] - self.geometry.tiles[i].min_fs
+                    PEAKS[key][:, 1] = PEAKS[key][:, 1] - self.geometry.size[0] + self.geometry.tiles[i].max_ss #- self.geometry.size[0] / 2
+                    PEAKS[key][:, 0], PEAKS[key][:, 1]  = self.geometry.tiles[i].rotate_peaks(PEAKS[key])
+                    if np.all(PEAKS[key][:, 1] <= 0):
+                        PEAKS[key][:, 1] += self.geometry.tiles[i].xmax - self.geometry.tiles[i].xmin
+                        #and PEAKS[key][:, 0] <= 0:
+                    if np.all(PEAKS[key][:, 0] <= 0):
+                        PEAKS[key][:, 0] += self.geometry.tiles[i].ymax - self.geometry.tiles[i].ymin
+                    #print self.geometry.tiles[i].ymax, self.geometry.tiles[i].ymin
+                    PEAKS[key][:, 0] = self.geometry.tiles[i].ymax - self.geometry.tiles[i].ymin - PEAKS[key][:, 0]
+                    PEAKS[key][:, 0] +=  self.geometry.det_size[0] - self.geometry.tiles[i].ymax
+                    PEAKS[key][:, 1] += self.geometry.tiles[i].xmin
+
+                    RPEAKS.append(PEAKS[key])
+        #        RPEAKS.append(self.geometry.tiles[i].rotate_peaks(PEAKS[key]))
+        return np.vstack(RPEAKS)
+
+    def randomize(self, n):
+        if n > len(self.filenames):
+            print("Sorry, you ask for a subset of %i frames, with a stream containing only %i frames.\n Exiting" % (n, len(self.filenames)))
+            return
+        sample = np.random.choice(self.filenames,size=n)
+        outstream = self.streamfile.split('.stream')[0] + '_randomized_%i.stream' %n
+        print("The new crystFEL stream will be saved in %s" %outstream)
+        streamout = open(outstream,mode='w')
+        streamout.write(self.header)
+        for fn in sample:
+            dic = self.fns_dict[fn]
+            self.stream.seek(dic['BeginChunk'])
+            offset = dic['BeginChunk']
+            for line in self.stream:
+                    streamout.write(line)
+                    offset += len(line)
+                    if offset == dic['EndChunk']: break
+        streamout.close()
 
 class CrystFELStream(QObject):
 
@@ -648,7 +737,7 @@ class Frame(object):
         self.indexed = []
         self.hkl_stream = []
 
-class Geom(object):
+class DetGeometry(object):
     def __init_(self):
         self.distance = 0
         self.energy = 0
@@ -699,10 +788,40 @@ class Geom(object):
         return self.bins
         #print self.bins
 
-if __name__ == "__main__":
-    s = CrystFELStreamLight('/Users/coquelleni/IBS/RADDAM_RT/IceRemoval/2ms_clean.stream', None)
 
+class ArgumentParser(argparse.ArgumentParser):
+    def __init__(self):
+        desc = """ This script will find positive and negative density peaks above a given peak threshold (--peak argument / default=4.0). \n
+        Each blob (more than 2 voxels large) will then be integrated up to another user provided threshold (--threshold argument / default=3.5). \n
+        The script will finally allocate each blob to the closest protein atom (including heteroatoms). \n
+        A radius filter can be used as an extra option (otherwise a default radisu value  of 10 Angstroms will be applied).
+        """
+
+        argparse.ArgumentParser.__init__(self, description=desc)
+        self.add_argument("--stream", "-s", nargs=1,
+                          help="CrystFEL stream")
+        self.add_argument("-n", nargs=1, type=int,
+                          help="Number of frames to keep")
+
+
+if __name__ == "__main__":
+    #s = CrystFELStreamLight('/Users/coquelleni/IBS/RADDAM_RT/IceRemoval/2ms_clean.stream', None)
+
+
+    parser = ArgumentParser()
+
+    args = vars(parser.parse_args())
+
+    streamFN = args['stream'][0]
+    n = args['n'][0]
+    s = CrystFELStreamLight(streamFN, None)
     s.parse_stream()
+
+    s.randomize(n)
+    #print(s.fns_dict[0])
+
+
+
     #s=Stream('iris_nobkgsub_zaef_rings_nocen.stream')
     #s = Stream('dev/C_RS_clean.stream')
     #geom_params = parse_geom_file(s.geom, openfn=False)

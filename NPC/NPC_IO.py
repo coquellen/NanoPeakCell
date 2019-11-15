@@ -7,7 +7,9 @@ import numpy as np
 #except:
 #    CCTBX=False
 
-#from NPC.NPC_CBF import write
+from NPC.NPC_CBF import write
+from multiprocessing import Lock, Value
+
 import os
 #from NPC.NPC_routines import dpack
 
@@ -39,6 +41,7 @@ class CBF(object):
     def __init__(self, args):
         self.args = args
 
+
     def SaveHit(self, img, fin):
         OutputFilename = os.path.join(self.args['output_directory'],
                                       'NPC_run%s' %self.args['num'].zfill(3),
@@ -46,6 +49,18 @@ class CBF(object):
                                       '%s.cbf'%fout)
         write(OutputFilename, img.astype(np.int32))
 
+class Counter(object):
+    def __init__(self, initval=0):
+        self.val = Value('i', initval)
+        self.lock = Lock()
+
+    def increment(self):
+        with self.lock:
+            self.val.value += 1
+
+    def value(self):
+        with self.lock:
+            return self.val.value
 
 class HDF5(object):
     def __init__(self, args, energy = False):

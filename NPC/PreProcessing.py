@@ -3,6 +3,7 @@ import sys
 import time
 import multiprocessing
 import os
+#Python2 / Python3 compatibility
 try:
     import Queue
 except ImportError:
@@ -137,8 +138,6 @@ class FileSentinel(multiprocessing.Process):
             return
 
 
-
-
 class DataProcessing(object):
     def __init__(self, options):
         # Common part
@@ -241,7 +240,7 @@ class DataProcessingMultiprocessing(DataProcessing):
 
         utils.startup(self.options)
         # First queue - Send the jobs
-        self.tasks = multiprocessing.JoinableQueue(maxsize=10000)
+        self.tasks = multiprocessing.JoinableQueue()
         # Second one - Send the number of images to process
         self.N_queue = multiprocessing.Queue()
         # Third one - the results
