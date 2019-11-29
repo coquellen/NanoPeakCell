@@ -140,7 +140,7 @@ def workerEuXFEL(wrk_num, HF):
                 # else:
                 #    nohit_IDX.append(frameID)
 
-    if socks.get(control_receiver) == zmq.POLLIN:
+        if socks.get(control_receiver) == zmq.POLLIN:
             newParams = control_receiver.recv_json(zmq.NOBLOCK)
 
             if newParams.keys()[0] in ["STOP", "resetMP"]:
