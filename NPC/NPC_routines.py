@@ -35,9 +35,13 @@ def InitDetector(args):
     else:
         try:
             detector_name = args['detector']
-            detector = pyFAI.detector_factory(detector_name)
-            detector.overload = GetOverload(detector_name)
-            return detector
+            if detector_name == 'Eiger16M_ID23EH1':
+                from NPC.Detectors import  Eiger16M
+                return Eiger16M()
+            else:
+                detector = pyFAI.detectors.detector_factory(detector_name)
+                detector.overload = GetOverload(detector_name)
+                return detector
 
         # TODO: not the correct exception - needs to be rewritten
         except RuntimeError:

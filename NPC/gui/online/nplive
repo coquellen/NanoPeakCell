@@ -10,7 +10,7 @@ except:
     from PyQt4 import QtGui, QtCore
 from NPC.gui.Views import ImageViewOnline, XPView, HitLive, MaxProjViewOnline
 
-from NPC.gui.online.EigerLive_process import loadBalancer, MPloadBalancer, workerEiger
+from NPC.gui.online.EigerLive_process import loadBalancer, MPloadBalancer, workerEiger, workerPilatus, cbf_ventilator, _workerEiger
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 app = QtGui.QApplication([])
@@ -125,11 +125,11 @@ class LiveEiGerController(object):
         # The gui (HitLiveView object) can send hit-finding parameters to workers (PUB socket @ 5559)
         contextResultsReceiver = zmq.Context()
         self.resultsReceiver = contextResultsReceiver.socket(zmq.PULL)
-        self.resultsReceiver.bind("tcp://127.0.0.1:5558")
+        self.resultsReceiver.bind("tcp://*:5558")
 
         contextControlSender = zmq.Context()
         self.controlSender = contextControlSender.socket(zmq.PUB)
-        self.controlSender.bind("tcp://127.0.0.1:5559")
+        self.controlSender.bind("tcp://*:5559")
 
         # The ImageViewer will send request to the Load Balancer @ 5570
         # the Load Balancer will forward the request to an available worker.
@@ -151,7 +151,7 @@ class LiveEiGerController(object):
         self.XPView = XPView(Live=True)
         self.XPView.setupData()
         self.HitLiveView = HitLive(self, self.resultsReceiver, self.controlSender)
-        self.ImageView = ImageViewOnline(self.XPView, binning=2, name='ImageView', zmqSocket=imgSocket, req="HIT", timeout=250)
+        self.ImageView = ImageViewOnline(self.XPView, binning=2, name='ImageView', zmqSocket=imgSocket, req="HIT", timeout=500)
         self.ImageView.setWindowTitle("NPC - Hits")
         self.MaxProjView = MaxProjViewOnline(self.XPView, binning=1, name='MaxProj', zmqSocket=maxProjSocket, req="MAXPROJ", timeout=10000)
         self.MaxProjView.setWindowTitle("NPC - Maximum Projection")
@@ -160,8 +160,8 @@ class LiveEiGerController(object):
         self.menuBar.setGeometry(QtCore.QRect(0, 0, 1060, 22))
         self.ImageView.setMenuBar(self.menuBar)
         self.menuBar.setNativeMenuBar(False)
-        self.MaxProjView.view.roi.show()
-        self.ImageView.view.roi.show()
+        #self.MaxProjView.view.roi.show()
+        #self.ImageView.view.roi.show()
 
         self.ImageView.closeSignal.connect(self.closeApp)
         self.HitLiveView.ui.ShowROI.clicked.connect(lambda: self.toggleROI(True))
@@ -207,8 +207,6 @@ class LiveEiGerController(object):
         self.XPView.getDetector()
         self.HitLiveView.shape = self.XPView.detector.shape
         self.HitLiveView.resetROI()
-        #print(self.HitLiveView.shape)
-        #if
 
     def closeApp(self):
         self.saveState()
@@ -362,18 +360,18 @@ class LiveEiGerController(object):
             Log("Setting NPixels Value from command line to %i" %self.HF.npixels)
             self.HitLiveView.ui.npix.setText(str(self.HF.npixels))
 
-        if hasattr(self.HF, "shape"):
-            index = self.XPView.ui.Detector.findText("Eiger%s"%HF.Eiger)
-            self.XPView.ui.Detector.setCurrentIndex(index)
-            self.HF.x2, self.HF.y2 = self.HF.shape
-        else:
-            self.HF.x1 = int(self.HitLiveView.ui.ROIX1.text())
-            self.HF.x2 = int(self.HitLiveView.ui.ROIX2.text())
-            self.HF.y1 = int(self.HitLiveView.ui.ROIY1.text())
-            self.HF.y2 = int(self.HitLiveView.ui.ROIY2.text())
-        self.HF.roi = [self.HF.x1, self.HF.y1, self.HF.x2, self.HF.y2]
-        self.HF.shape = self.XPView.detector.shape
-        Log("%i %i" %self.HF.shape)
+        #if hasattr(self.HF, "shape"):
+        #    index = self.XPView.ui.Detector.findText("Eiger%s"%HF.Eiger)
+        #    self.XPView.ui.Detector.setCurrentIndex(index)
+        #    self.HF.x2, self.HF.y2 = self.HF.shape
+        #else:
+        #    self.HF.x1 = int(self.HitLiveView.ui.ROIX1.text())
+        #    self.HF.x2 = int(self.HitLiveView.ui.ROIX2.text())
+        #    self.HF.y1 = int(self.HitLiveView.ui.ROIY1.text())
+        #    self.HF.y2 = int(self.HitLiveView.ui.ROIY2.text())
+        #self.HF.roi = [self.HF.x1, self.HF.y1, self.HF.x2, self.HF.y2]
+        #self.HF.shape = self.XPView.detector.shape
+        #Log("%i %i" %self.HF.shape)
 
         # Do not forget to restore the object attributes to the widget values.
         self.ImageView.setAttr()
@@ -411,10 +409,10 @@ class HitFinderParameters(object):
                    '1m'  : (1065, 1030),
                    '4m'  : (2167, 2070),
                    '9m'  : (3269, 3110),
-                   '16m' : (4371, 4150)}
+                   '16m' : (4371, 4150),
+                 }
     def __init__(self, args):
 
-        #print(args)
         self.threshold = args.threshold[0]
         self.npixels = args.pixels[0]
         self.maskFN = args.mask[0]
@@ -432,7 +430,10 @@ class HitFinderParameters(object):
             self.x2 = self.shape[0]
             self.y2 = self.shape[1]
         else:
-            self.x2, self.y2 = (1400,1400)
+            self.x2, self.y2 = (1679,1475)
+            self.shape = (1679, 1475)
+
+        print(self.shape)
         self.roi = [self.x1, self.y1, self.x2, self.y2]
         self.RADDAM = False
         self.NShots = 0
@@ -471,41 +472,42 @@ class ArgumentParser(argparse.ArgumentParser):
             Log("Sorry: the ip address of the detector is required")
             return False
 
-        elif not os.path.exists(jsonFile)  and self.args.Eiger == [None]:
+        elif not os.path.exists(jsonFile) and self.args.Eiger == [None]:
             self.print_help()
             Log("Please provide the model of the Eiger for the first launch!!!")
 
-
         else:
-            # Here check the ip address if not in debug mode
-            if not self.args.debug:
-                try:
-                    r = requests.get("http://%s/stream/api/1.3.1/config/mode" % self.args.ip[0],timeout=0.01)
-                    if r.status_code == 200:
-
-                        streamMode = r.json()["value"]
-                        if streamMode == 'disabled':
-
-                            Log("--- Attention !!! The stream mode of the Eiger is disabled\n--- Enabling Stream mode...")
-                            data = json.dumps({'value': 'enabled'})
-                            r = requests.put("http://%s/stream/api/1.3.1/config/mode" % self.args.ip[0], data=data)
-                            if r.status_code == 200:
-                                Log("--- Stream mode enabled")
-                                return True
-                            else:
-                                Log("--- Error while enabling stream mode... Exiting")
-                                return False
-                        else:
-                            Log("--- Stream mode is already enabled")
-                            return True
-                    else:
-                        Log("--- Error communicating with Eiger (Error HTML %i)" %r.status_code)
-                        return False
-                except requests.exceptions.ConnectionError:
-                    Log("--- Failed to establish a connection with the Eiger @ %s... Exiting" %self.args.ip[0])
-            else:
-                return True
-
+            return True
+        # else:
+        #     # Here check the ip address if not in debug mode
+        #     if not self.args.debug:
+        #         try:
+        #             r = requests.get("http://%s/stream/api/1.3.1/config/mode" % self.args.ip[0],timeout=0.01)
+        #             if r.status_code == 200:
+        #
+        #                 streamMode = r.json()["value"]
+        #                 if streamMode == 'disabled':
+        #
+        #                     Log("--- Attention !!! The stream mode of the Eiger is disabled\n--- Enabling Stream mode...")
+        #                     data = json.dumps({'value': 'enabled'})
+        #                     r = requests.put("http://%s/stream/api/1.3.1/config/mode" % self.args.ip[0], data=data)
+        #                     if r.status_code == 200:
+        #                         Log("--- Stream mode enabled")
+        #                         return True
+        #                     else:
+        #                         Log("--- Error while enabling stream mode... Exiting")
+        #                         return False
+        #                 else:
+        #                     Log("--- Stream mode is already enabled")
+        #                     return True
+        #             else:
+        #                 Log("--- Error communicating with Eiger (Error HTML %i)" %r.status_code)
+        #                 return False
+        #         except requests.exceptions.ConnectionError:
+        #             Log("--- Failed to establish a connection with the Eiger @ %s... Exiting" %self.args.ip[0])
+        #     else:
+        #         return True
+        #
             #
             #try:
             #    apiVersionReq = requests.get("http://%s/detector/api/<api-version>/description" % self.ip, timeout = 1)
@@ -529,16 +531,26 @@ class ArgumentParser(argparse.ArgumentParser):
 if __name__ == '__main__':
     import sys
     parser = ArgumentParser()
+    mxcube_dic = {'exposure': 0.006,
+                  'detector_distance': 184.365,
+                  'wavelength': 0.873,
+                  'orgx': 755.0,
+                  'orgy': 827.4,
+                  'oscillation_range': 0.100,
+                  'start_angle': 90.003,
+                  'number_images': 2000,
+                  'image_first': 1,
+                  'template': '/data/id23eh2/inhouse/opid232/20210721/RAW_DATA/RSEGFP2/RSEGFP2-X1/X1-RSEGFP2_1_????.cbf'
+                  }
 
     if parser.check_input():
 
         HF = HitFinderParameters(parser.args)
-
         Ncpus = parser.args.cpus[0]
         for wrk_num in range(Ncpus):
-            Process(target=workerEiger, args=(wrk_num,HF)).start()
+            Process(target=workerPilatus, args=(wrk_num, HF)).start()
 
-        #Process(target=ventilator, args=()).start()
+        Process(target=cbf_ventilator, args=(mxcube_dic,)).start()
         myapp = LiveEiGerController(app, HF)
         sys.exit(app.exec_())
     #else:

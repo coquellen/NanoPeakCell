@@ -67,6 +67,43 @@ class Jungfrau16M(object):
         self.mask = np.zeros(self.shape)
         self.spline = None
 
+class Eiger500k(object):
+    def __init__(self):
+        self.resolution=(512, 1032)
+        self.shape = self.resolution
+        self.pixel1 = 75e-6
+        self.pixel2 = 75e-6
+        self.mask = np.zeros(self.shape)
+        self.spline = None
+
+
+class Pilatus1M(object):
+    def __init__(self):
+        self.resolution=(4362, 4148)
+        self.shape = self.resolution
+        self.pixel1 = 172e-6
+        self.pixel2 = 172e-6
+        self.mask = np.zeros(self.shape)
+        self.spline = None
+
+class Pilatus2M(object):
+    def __init__(self):
+        self.resolution=(1679, 1475)
+        self.shape = self.resolution
+        self.pixel1 = 172e-6
+        self.pixel2 = 172e-6
+        self.mask = np.zeros(self.shape)
+        self.spline = None
+
+class Eiger16M(object):
+    def __init__(self):
+        self.resolution=(4362, 4148)
+        self.shape = self.resolution
+        self.pixel1 = 75e-6
+        self.pixel2 = 75e-6
+        self.mask = np.zeros(self.shape)
+        self.spline = None
+
 
 class AgipD(object):
     def __init__(self):

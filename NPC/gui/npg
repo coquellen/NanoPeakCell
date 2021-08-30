@@ -5,7 +5,6 @@ try:
 except:
     from PyQt4 import QtGui, QtCore
     from PyQt4.QtCore import pyqtSignal
-
 import os
 from NPC.gui.Views import ImageView, XPView, TreeFileView, HitFindingView, TableWidget
 from NPC.gui.Models import NPGData
@@ -126,7 +125,7 @@ class NPGController(object):
 
 
         self.app = app
-        self.binning = 2
+        self.binning = 4
         self.settings = QtCore.QSettings('Mycompany', 'NPG')
         self.XPView = XPView(False)
         self.ImageView = ImageView(self.XPView, binning= self.binning, name=ImageView)

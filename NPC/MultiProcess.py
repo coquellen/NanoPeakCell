@@ -15,7 +15,11 @@ try:
 except ImportError:
     import queue as Queue
 import cPickle
-from PyQt4 import QtCore
+
+try:
+    from PyQt5 import QtCore
+except:
+    from PyQt4 import QtCore
 
 
 
@@ -183,7 +187,7 @@ class MProcess(multiprocessing.Process):
             self.SubtractBkg = False
 
         self.mask = self.getMask()
-        print(np.where(self.mask))
+
         self.dark = self.getCorrection(self.options['dark'])
 
         self.data = np.zeros((self.roi.xmax-self.roi.xmin, self.roi.ymax-self.roi.ymin))
@@ -453,7 +457,6 @@ class MProcessEiger(MProcess):
                                          self.dark,
                                          self.roi)
             
-
 
             masked = np.ma.array(self.data,
                                  mask=self.mask[self.roi.xmin:self.roi.xmax, self.roi.ymin:self.roi.ymax])

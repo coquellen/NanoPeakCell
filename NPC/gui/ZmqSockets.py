@@ -55,7 +55,7 @@ class ZmqTimer(object):
             self.callback(self.backend, self.workers_MP[self.N % len(self.workers_MP)], self.client, self.request)
             #self.backend.send_multipart([self.workers_MP[self.N % len(self.workers_MP)], b"", "MaxProj-Client", b"", "MAXPROJ"])
             self.N += 1
-            print(self.workers_MP, len(self.workers_MP))
+            #print(self.workers_MP, len(self.workers_MP))
             if self.N % len(self.workers_MP) == 0: self.N = 0
 
             self.last_call = time.time()
@@ -226,9 +226,6 @@ class ZMQPushMulti(ZMQPush):
             t = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
             print("[%s] sent zmq json msg" % t)
         return
-
-
-
 
 
 class EigerZMQStream(ZMQPull):

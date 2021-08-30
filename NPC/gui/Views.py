@@ -1,5 +1,5 @@
 import numpy as np, h5py
-import pyFAI
+#import pyFAI
 import pyqtgraph as pg
 import zmq
 from NPC.gui.NPC_Widgets import CustomViewBox, ShowNumbers
@@ -317,7 +317,7 @@ class NPGViewBox(CustomViewBox):
         self.setAspectLocked()
         self.img = pg.ImageItem()
         self.addItem(self.img)
-        self.DetectedPlot =  pg.ScatterPlotItem(pen=self.pen, brush=self.emptyBrush, pxMode=False)
+        self.DetectedPlot = pg.ScatterPlotItem(pen=self.pen, brush=self.emptyBrush, pxMode=False)
         self.IntegratedPlot = pg.ScatterPlotItem(pen=self.pen, brush=self.emptyBrush, pxMode=False)
         self.addItem(self.DetectedPlot)
         self.addItem(self.IntegratedPlot)
@@ -356,6 +356,7 @@ class NPGViewBox(CustomViewBox):
         self.roi.handle.pen = self.pen
         self.roi.handle.hoverColor = colorHoverMapping[idx]
         self.roi.handle.update()
+        self.IntegratedPlot.setPen(self.pen)
 
         for i in range(self.nRings):
             self.rings[i].setPen(self.pen)
@@ -442,15 +443,17 @@ class ImageView(QMainWindow):
             self.vmax = 10
         self.view.updateCmap()
 
-    def setImg(self, data):
+    def setImg(self, data, x=[], y=[]):
         self.shape = data.shape
         if self.binning != 1:
             self.data = self.rebin(data)
-        else: self.data = data
+        else:
+            self.data = data
         self.view.img.setImage(self.data.astype(np.float64), levels=(self.vmin, self.vmax))
         if self.showBragg :
-            self.view.IntegratedPlot.setData([],[])
-            self.showBragg = False
+            self.view.IntegratedPlot.setData(np.array(x) / self.binning,
+                                             np.array(y) / self.binning)
+            #self.showBragg = False
 
     def setLevels(self):
         try:
@@ -462,13 +465,13 @@ class ImageView(QMainWindow):
 
     def setBeam(self):
         self.XPView.getBeam()
-        print("New beam center position: X = %5i -- Y = %5i" % (self.XPView.bx, self.XPView.by))
+        #print("New beam center position: X = %5i -- Y = %5i" % (self.XPView.bx, self.XPView.by))
         self.view.beam.setPos(self.XPView.bx, self.XPView.by, self.binning)
         self.setResRingsPosition()
 
     def setDistance(self):
         self.XPView.getDistance()
-        print("New detector distance (mm): %4.2f " % (self.XPView.distance))
+        #print("New detector distance (mm): %4.2f " % (self.XPView.distance))
         self.setResRingsPosition()
 
     def setWavelength(self):
@@ -641,28 +644,56 @@ class ImageViewOnline(ImageView):
         self.timeout = timeout
         self.sendReq = True
         self.data = None
+        self.showBragg = True
 
         self.imgTimer = QtCore.QTimer()
         self.imgTimer.timeout.connect(self.sendRequest)
-        self.imgTimer.start(timeout)
+        self.imgTimer.start(self.timeout)
         #self.imgTimer.setInterval()
+        self.Ncallbacks = 0
 
-    def proc(self, data):
-        self.setImg(data)
+    #def show_braggs(self):
+    #    if chekcbox.IsChecked(): self.
 
     def sendRequest(self):
-        self.zmqSocket.send(self.request)
+        if not self.sendReq:
+            self.Ncallbacks += 1
+            if self.Ncallbacks == 20:
+                self.sendReq = True
+                self.Ncallbacks = 0
 
+        if self.sendReq:
+            self.zmqSocket.send(self.request)
+            self.sendReq = False
         try:
             md = self.zmqSocket.recv_json(zmq.NOBLOCK)
-            data = self.zmqSocket.recv(copy=False, track=False)
+            xy = self.zmqSocket.recv_json(zmq.NOBLOCK)
+            data = self.zmqSocket.recv(copy=False, track=False)  # flags=zmq.NOBLOCK)
             buf = buffer(data)
             A = np.frombuffer(buf, dtype=md['dtype']).reshape(md['shape'])
-            self.proc(A)
-            #self.sendReq = True
+            self.setImg(A, xy['x'], xy['y'])
+            self.sendReq = True
 
         except:
-            tmp = self.zmqSocket.recv()
+            pass
+
+#    def sendRequest(self):
+#        if self.sendReq:
+#            self.sendReq = False
+#            self.zmqSocket.send(self.request)
+# 
+#            md = self.zmqSocket.recv_json(zmq.NOBLOCK)
+#            print(md)
+#            data = self.zmqSocket.recv(copy=False, track=False)
+#            print(data)
+#            buf = buffer(data)
+#            A = np.frombuffer(buf, dtype=md['dtype']).reshape(md['shape'])
+#            self.proc(A)
+#            self.sendReq = True
+
+          #except:
+          #  tmp = self.zmqSocket.recv()
+          #  self.sendReq = True
             #print tmp
 
 
@@ -703,7 +734,7 @@ class MaxProjViewOnline(ImageViewOnline):
         data = self.zmqSocket.recv(copy=False, track=False)
         buf = buffer(data)
         A = np.frombuffer(buf, dtype=md['dtype']).reshape(md['shape'])
-        self.proc(A)
+        self.setImg(A)
 
     def resetMP(self):
         self.MP = np.zeros(self.shape)
@@ -777,14 +808,15 @@ class XPView(NPGWidget):
 
     def getDetector(self,verbose=False):
         det = self.ui.Detector.currentText()
-        try:
-            self.detector = pyFAI.detector_factory(str(det))
-        except:
-            self.detector = get_class("NPC.Detectors", str(det))()
-        self.psx = self.detector.pixel1
-        self.psy = self.detector.pixel2
-        if verbose: Log("Detector updated to %s" % str(det))
-        if self.Live: self.ui.Detector.setDisabled(True)
+        if det != '':
+            try:
+                self.detector = pyFAI.detector_factory(str(det))
+            except:
+                self.detector = get_class("NPC.Detectors", str(det))()
+            self.psx = self.detector.pixel1
+            self.psy = self.detector.pixel2
+            if verbose: Log("Detector updated to %s" % str(det))
+            #if self.Live: self.ui.Detector.setDisabled(True)
 
     def closeEvent(self, evt):
         if evt.spontaneous():
@@ -809,6 +841,7 @@ class XPView(NPGWidget):
             self.ui.Detector.setCurrentIndex(index)
         except:
             pass
+
 
 class CsPADGeom(NPGWidget):
 

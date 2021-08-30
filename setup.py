@@ -10,7 +10,7 @@ setup(
 	author        =   "Nicolas Coquelle",
 	author_email  =   "coquelleni@ill.fr",
 	packages      =   find_packages(),
-    package_data={'NPC': ['bitmaps/*','gui/cmaps/*','gui/icons/*', 'mpi/*']},
+    package_data={'NPC': ['bitmaps/*','gui/cmaps/*','gui/icons/*', 'mpi/*','dozor/dozor.py']},
 	scripts = ['NPC/npc','NPC/gui/npg','NPC/gui/npgeom','NPC/gui/online/nplive'],
 
     ext_modules=[

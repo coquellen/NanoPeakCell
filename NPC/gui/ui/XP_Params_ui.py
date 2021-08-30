@@ -126,6 +126,9 @@ class Ui_Form(object):
             for i in range(len(Eiger_list)):
                 self.Detector.addItem(_fromUtf8(""))
                 self.Detector.setItemText(i, _translate("Form", Eiger_list[i], None))
+            for i in range(len(Pilatus_list)):
+                self.Detector.addItem(_fromUtf8(""))
+                self.Detector.setItemText(i, _translate("Form", Pilatus_list[i], None))
 
         self.distance.setText(_translate("Form", "100", None))
         self.label_14.setText(_translate("Form", "Wavelength (A)", None))
