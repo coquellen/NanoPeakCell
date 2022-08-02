@@ -1,5 +1,5 @@
 import numpy as np, h5py
-#import pyFAI
+import pyFAI
 import pyqtgraph as pg
 import zmq
 from NPC.gui.NPC_Widgets import CustomViewBox, ShowNumbers
@@ -809,7 +809,9 @@ class XPView(NPGWidget):
     def getDetector(self,verbose=False):
         det = self.ui.Detector.currentText()
         if det != '':
+            print(str(det).lower())
             try:
+
                 self.detector = pyFAI.detector_factory(str(det).lower())
             except:
                 self.detector = get_class("NPC.Detectors", str(det))()
