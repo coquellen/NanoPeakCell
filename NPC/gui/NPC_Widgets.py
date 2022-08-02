@@ -1,7 +1,7 @@
 import platform
 op_sys = platform.system()
-if op_sys == 'Darwin':
-    from Foundation import NSURL
+#if op_sys == 'Darwin':
+#    from Foundation import NSURL
 
 try:
     from PyQt5 import QtCore, QtGui
@@ -249,10 +249,10 @@ class TestListView(QtGui.QTreeWidget):
             event.accept()
             links = []
             for url in event.mimeData().urls():
-                if op_sys == 'Darwin':
-                    fname = str(NSURL.URLWithString_(str(url.toString())).filePathURL().path())
-                else:
-                    fname = str(url.toLocalFile())
+                #if op_sys == 'Darwin':
+                #fname = str(NSURL.URLWithString_(str(url.toString())).filePathURL().path())
+                #else:
+                fname = str(url.toLocalFile())
 
                 links.append(fname)
             print("Links: ")
