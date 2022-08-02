@@ -115,4 +115,11 @@ class AgipD(object):
         self.spline = None
 
 
-
+class Epix10k2M(object):
+    def __init__(self):
+        self.resolution=(1800,1800)
+        self.shape = self.resolution
+        self.pixel1 = 1e-4
+        self.pixel2 = 1e-4
+        self.mask = np.zeros(self.shape)
+        self.spline = None
