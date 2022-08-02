@@ -6,15 +6,15 @@
 #
 # WARNING! All changes made in this file will be lost!
 
-Pilatus_list = ["Pilatus%iM"%i for i in [1,2,6]]
+Pilatus_list = ["Pilatus%iM"%i for i in [1, 2, 6]]
 
 Eiger_list = ["Eiger500k",
-            "Eiger1M",
-            "Eiger4M",
-            "Eiger9M",
-            "Eiger16M"]
+              "Eiger1M",
+              "Eiger4M",
+              "Eiger9M",
+              "Eiger16M"]
 
-otherDet_list = ['CSPAD', 'MPCCD', 'AgipD', 'Jungfrau4M', 'Jungfrau16M','RayonixMx225hs']
+otherDet_list = ['CSPAD', 'Jungfrau4M', 'Jungfrau16M', 'Epix10k2M', 'MPCCD', 'AgipD', 'RayonixMx225hs']
 
 det_list = Pilatus_list + Eiger_list + otherDet_list
 
