@@ -2,12 +2,11 @@ import numpy as np
 from scipy.ndimage.interpolation import rotate
 import os
 
-tile2det= {(4112, 1030): (6000,6000), # Jungfrau 4M
-           (1480, 1552): (1800,1800)  # CSPAD
-          }
+tile2det= {(4112, 1030): (6000, 6000),  # Jungfrau 4M
+           (1480, 1552): (1800, 1800),  # CSPAD
+           (5632,  384): (1800, 1800)}
 
 class Tile(object):
-
 
     def __init__(self, name):
         self.name = name
@@ -131,7 +130,7 @@ class Geom(object):
           lines = open(filename).readlines()
         else:
           lines = filename.split('\n')
-        tiles_name = [ line.split('/')[0] for line in lines if 'max_fs' in line and 'bad_' not in line]
+        tiles_name = [line.split('/')[0] for line in lines if 'max_fs' in line and 'bad_' not in line]
         for tile_name in tiles_name:
             tile = Tile(tile_name)
             self.tiles.append(tile)
@@ -139,16 +138,18 @@ class Geom(object):
             self.max_fs = max(self.max_fs, int(float(tile.max_fs))+1)
             self.max_ss = max(self.max_ss, int(float(tile.max_ss))+1)
 
-        return (self.max_ss,self.max_fs)
-
+        return self.max_ss, self.max_fs
 
     def reconstruct(self, data):
 
-            for tile in self.tiles:
-                self.reconstructed[tile.xmin:tile.xmax, tile.ymin:tile.ymax] = rotate(data[int(tile.min_ss):int(tile.max_ss) + 1, int(tile.min_fs):int(tile.max_fs) + 1][::-1,:], tile.alpha)
-            # The origin of CsPAD detector is lower right corner; therefore we need the transpose of this reconstruction
-            if self.size == (1480, 1552): return self.reconstructed[:,::-1]
-            else: return self.reconstructed
+        for tile in self.tiles:
+            self.reconstructed[tile.xmin:tile.xmax, tile.ymin:tile.ymax] = rotate(data[int(tile.min_ss):int(tile.max_ss) + 1, int(tile.min_fs):int(tile.max_fs) + 1][::-1 ,:], tile.alpha)
+
+        # The origin of CsPAD detector is lower right corner; therefore we need the transpose of this reconstruction
+        if self.size == (1480, 1552):
+            return self.reconstructed[:, ::-1]
+        else:
+            return self.reconstructed
 
 
 def grep(sequence, buffer):
@@ -167,7 +168,7 @@ def retrieve_geom_params(lines, tile):
 def retrieve_geom_params_euxfel(lines, tile):
     results = []
     all = grep(lines, tile)
-    for param in ['min_fs', 'max_fs', 'min_ss', 'max_ss', '/fs =', '/ss =', 'corner_x', 'corner_y','dim1']:
+    for param in ['min_fs', 'max_fs', 'min_ss', 'max_ss', '/fs =', '/ss =', 'corner_x', 'corner_y', 'dim1']:
         l = grep(all, param)
         results.append(l[0].split('=')[1].strip())
     return results
@@ -547,83 +548,5 @@ def reconstruct(data,geom):
         return data
 
 
-if __name__ == '__main__':
-    from matplotlib import pyplot as plt
-    #geom_params  = parse_geom_file_quadrants('/Users/coquelleni/EuXFEL/current.geom')
-    geom_params, shape = parse_geom_file_euxfel('/Users/coquelleni/PycharmProjects/EuXFEL/20190724_Run4_v0.geom')
 
-    #for params in geom_params.values():
-    #    min_fs, max_fs, min_ss, max_ss = [int(float(p)) for p in params[0:4]]
-
-    #    x = float(params[4].split('x')[0])
-    #    y = float(params[4].split('y')[0].split('x')[1])
-    #    print x, y
-    #for keys in geom_params.keys():
-    #    print keys, geom_params[keys][4:6]
-    data = np.zeros(shape)
-    for i in range(16):
-        data[i,::] = i
-
-    recon = DoReconstruct_EuXFEL(data, geom_params, 1500)
-    plt.imshow(recon)
-    plt.show()
-    #import h5py
-    #from Stream import CrystFELStreamLight
-    from matplotlib import pyplot as plt
-    #stream = CrystFELStreamLight('/Users/coquelleni/test_SLAC.stream')
-    #stream.parse_stream()
-
-    #fn = '/reg/d/psdm/cxi/cxii5615/res/colletier/real/HDF5_cxii5615_r0024_016/cxii5615_24_1430384282_117555220.h5'
-    #print(fn)
-    #dic = stream.fns_dict[fn]
-
-    #h5 = h5py.File('/Users/coquelleni/EuXFEL/powder.h5')
-    #h5 = h5py.File(fn)
-    #dset = h5['data'][:]
-    #h5.close()
-    #names = [tile.name for tile in stream.geometry.tiles]
-    #for t in ['q1a2']:#, 'q0a2', 'q2a0', 'q3a0']:
-    #      index = names.index(t)
-    #      tile = stream.geometry.tiles[index]
-    #      print('Selected tile: %s'%tile.name)
-    # #
-    #      print('Tile dimension: %5i %5i' %(tile.xmax-tile.xmin, tile.ymax-tile.ymin))
-    #      print tile.alpha
-    #      print tile.min_fs, tile.max_fs, tile.min_ss, tile.max_ss
-    #
-    #      print tile.xmin, tile.xmax, stream.geometry.det_size[0] - tile.ymin, stream.geometry.det_size[0] - tile.ymax
-    #      xmin = tile.xmin
-    #      ymin = tile.ymin #, tile.ymin,tile.ymax
-    #      #dset[int(tile.min_ss):int(tile.max_ss) + 1, int(tile.min_fs):int(tile.max_fs) + 1] = 10000
-    #
-    #
-    # stream.get_frame(fn)
-    # PEAKS = stream.get_peaks()
-    #
-    #
-    # print(PEAKS[:,0])
-    #
-    # #plt.imshow(dset[::-1,:], vmin=0, vmax=800, cmap='hot')
-    # plt.imshow(stream.geometry.reconstruct(dset), vmin=0,vmax=1300,cmap='hot')
-    # plt.plot(PEAKS[:,0]  , PEAKS[:,1], 'o', markersize=10, color='k', fillstyle='none')
-    # plt.plot(PEAKS[:, 0] , PEAKS[:, 1]  , 'o', markersize=6, color='w', fillstyle='none')
-    #
-    # plt.show()
-    #self.ImageView.view.IntegratedPlot.setData(peaks[:, 0] / self.binning,
-    #                                           peaks[:, 1] / self.binning)
-
-    #geometry = Geom()
-    #geometry.load('/Users/coquelleni/JungFrau_SWISSFEL_4M.geom', True)
-
-    #print(geometry.tiles)
-    #print(geometry.size)
-
-
-
-
-    #geometry.reconstruct(dset)
-    #plt.imshow(geometry.reconstructed, vmin=0, vmax=1000)
-    #plt.show()
-    #print dset.keys()
-    #h5.close()
 
