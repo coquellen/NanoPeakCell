@@ -1,10 +1,9 @@
-
 import sys
 import numpy as np
 import argparse
 
-#from NPC.gui.geom import Geom
-from geom import Geom
+from NPC.gui.geom import Geom
+#from geom import Geom
 from NPC import utils
 try:
     from PyQt5.QtCore import QThread, QObject, pyqtSignal

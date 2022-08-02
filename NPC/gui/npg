@@ -449,7 +449,7 @@ class NPGController(object):
         peaks = self.stream.get_peaks()
         self.ImageView.view.IntegratedPlot.setData(peaks[:,0] / self.binning,
                                                    peaks[:,1] / self.binning)
-        print peaks
+        print(peaks)
         #self.ImageView.view.DetectedPlot.setBrush(self.ImageView.view.emptyBrush)
 
     def parsedStream(self):
